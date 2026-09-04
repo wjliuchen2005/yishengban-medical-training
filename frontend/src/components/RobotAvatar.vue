@@ -99,6 +99,19 @@
             <line class="coat-hem" x1="60" y1="211" x2="140" y2="211" stroke="#9aa9b8" stroke-width="0.7" />
           </g>
 
+          <!-- OSCE 中数字人扮演就诊学生：换为日常卫衣，不穿白大褂 -->
+          <g class="casual-outfit" aria-hidden="true">
+            <path
+              d="M58 124 C58 116 64 111 72 111 L84 111 Q100 126 116 111 L128 111 C136 111 142 116 142 124 L142 208 C142 212 138 214 134 214 L66 214 C62 214 58 212 58 208 Z"
+              fill="#79a9bd"
+              stroke="#4f7f93"
+              stroke-width="1.6"
+            />
+            <path d="M83 111 Q100 130 117 111" fill="none" stroke="#d9eef2" stroke-width="4" stroke-linecap="round" />
+            <path d="M68 163 Q100 174 132 163 L132 203 L68 203 Z" fill="#6b9db2" opacity="0.72" />
+            <path d="M82 184 Q100 194 118 184" fill="none" stroke="#49778a" stroke-width="1.5" stroke-linecap="round" />
+          </g>
+
           <!-- 医疗盾形徽章（按图：小熊左胸口袋位置 + 盾形 + 红色十字） -->
           <g class="medical-shield">
             <path d="M84 134 L84 152 L93 156 L93 137 Z"
@@ -716,6 +729,10 @@ defineExpose({
   stroke: #b6cbd9;
   stroke-width: 1.1;
 }
+.casual-outfit { display: none; }
+.is-scene-osce .coat,
+.is-scene-osce .medical-shield { display: none; }
+.is-scene-osce .casual-outfit { display: block; }
 /* ===== 卡通小熊手臂：小熊身体色（浅黄奶油）+ 棕色描边，整体一段，不要白大褂长袖盖住 ===== */
 .arm .upper-arm,
 .arm .fore-arm {

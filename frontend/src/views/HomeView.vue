@@ -97,7 +97,7 @@ import { getSceneList } from '@/api/scene'
 import defaultCover from '@/assets/images/default-scene.svg'
 import chokingCover from '@/assets/images/scene-choking-cover.webp'
 import firstVisitCover from '@/assets/images/scene-first-visit-cover.webp'
-import osceCover from '@/assets/images/scene-osce-cover.svg'
+import osceCover from '@/assets/images/scene-osce-cover.webp'
 
 const router = useRouter()
 const scenes = ref([])
@@ -134,7 +134,7 @@ onMounted(async () => {
         description: '以问诊为核心，训练规范病史采集、临床归纳和独立病历书写',
         cover: '',
         role: '标准化患者',
-        difficulty: 4
+        difficulty: 5
       }
     ]
   } finally {

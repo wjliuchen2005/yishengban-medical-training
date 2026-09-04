@@ -2,7 +2,12 @@
   <div class="chat-view">
     <AppHeader />
 
-    <main class="chat-container" v-loading="initializing" element-loading-text="正在生成本次训练情景…">
+    <main
+      class="chat-container"
+      :class="{ 'is-osce-layout': isOsce }"
+      v-loading="initializing"
+      element-loading-text="正在生成本次训练情景…"
+    >
       <AvatarStage
         v-if="!avatarCollapsed"
         ref="stageRef"
@@ -48,12 +53,6 @@
             <el-switch v-model="voiceEnabled" size="small" @change="onVoiceToggle" />
             🔊 语音
           </label>
-          <el-badge v-if="isOsce" :is-dot="!medicalRecordSaved">
-            <el-button class="record-button" :type="medicalRecordSaved ? 'success' : 'primary'" plain @click="recordDrawerVisible = true">
-              <el-icon><Document /></el-icon>
-              <span>病历记录</span>
-            </el-button>
-          </el-badge>
           <el-badge :value="unreadCoachCount" :hidden="!unreadCoachCount" :max="99">
             <el-button class="coach-button" :type="coachHistory.length ? 'warning' : 'default'" @click="openCoachHistory">
               <el-icon><Bell /></el-icon>
@@ -211,6 +210,49 @@
         </div>
       </footer>
       </div>
+
+      <aside v-if="isOsce" ref="recordWorkspaceRef" class="record-workspace" aria-label="OSCE 病历书写区">
+        <div class="record-workspace-header">
+          <div class="record-title">
+            <span class="record-title-icon"><el-icon><DocumentChecked /></el-icon></span>
+            <div>
+              <span>OSCE 同屏病历</span>
+              <small>边问诊，边记录</small>
+            </div>
+          </div>
+          <span class="record-status" :class="medicalRecordSaved ? 'saved' : 'unsaved'">
+            {{ medicalRecordSaved ? '已保存' : '待保存' }}
+          </span>
+        </div>
+
+        <div class="record-intro">
+          <el-icon><DocumentChecked /></el-icon>
+          <div>
+            <strong>请根据你亲自问到的内容书写</strong>
+            <p>问诊是重点；体格检查与辅助检查只需整理考官快速给出的关键结果。病历单独评分。</p>
+          </div>
+        </div>
+        <div class="record-framework" aria-label="病历框架">
+          <span v-for="item in recordSections" :key="item">{{ item }}</span>
+        </div>
+        <el-input
+          ref="recordInputRef"
+          v-model="medicalRecordDraft"
+          class="record-editor"
+          type="textarea"
+          :rows="24"
+          maxlength="12000"
+          show-word-limit
+          resize="vertical"
+          placeholder="请完成主诉、现病史、其他病史、检查结果、病历摘要和初步诊断…"
+        />
+        <div class="record-actions">
+          <span :class="medicalRecordSaved ? 'saved' : 'unsaved'">
+            {{ medicalRecordSaved ? '已保存并纳入评分' : '修改后请保存' }}
+          </span>
+          <el-button type="primary" :loading="recordSaving" @click="saveRecord">保存病历</el-button>
+        </div>
+      </aside>
     </main>
 
     <el-drawer v-model="coachDrawerVisible" title="观察者教练记录" size="min(420px, 92vw)" class="coach-drawer">
@@ -237,40 +279,6 @@
           </el-button>
         </li>
       </ol>
-    </el-drawer>
-
-    <el-drawer
-      v-model="recordDrawerVisible"
-      title="OSCE 病历记录"
-      size="min(560px, 96vw)"
-      class="record-drawer"
-      direction="rtl"
-    >
-      <div class="record-intro">
-        <el-icon><DocumentChecked /></el-icon>
-        <div>
-          <strong>请根据你亲自问到的内容书写</strong>
-          <p>重点记录问诊信息；体格检查与辅助检查只需整理考官快速给出的关键结果。病历本身计入评分。</p>
-        </div>
-      </div>
-      <div class="record-framework" aria-label="病历框架">
-        <span v-for="item in recordSections" :key="item">{{ item }}</span>
-      </div>
-      <el-input
-        v-model="medicalRecordDraft"
-        type="textarea"
-        :rows="22"
-        maxlength="12000"
-        show-word-limit
-        resize="vertical"
-        placeholder="请完成主诉、现病史、其他病史、检查结果、病历摘要和初步诊断…"
-      />
-      <div class="record-actions">
-        <span :class="medicalRecordSaved ? 'saved' : 'unsaved'">
-          {{ medicalRecordSaved ? '已保存并纳入评分' : '尚未保存' }}
-        </span>
-        <el-button type="primary" :loading="recordSaving" @click="saveRecord">保存病历</el-button>
-      </div>
     </el-drawer>
 
     <el-dialog
@@ -362,7 +370,8 @@ const backendAvailable = ref(true)
 const pendingAction = ref(null)
 const actionDialogVisible = ref(false)
 const actionForm = reactive({})
-const recordDrawerVisible = ref(false)
+const recordWorkspaceRef = ref(null)
+const recordInputRef = ref(null)
 const recordSaving = ref(false)
 const recordSections = ['主诉', '现病史', '其他病史', '体格检查', '辅助检查', '病历摘要', '初步诊断/鉴别']
 const MEDICAL_RECORD_TEMPLATE = `主诉：
@@ -490,7 +499,7 @@ const scenePlaceholders = {
     title: 'OSCE模拟问诊与病历书写',
     role: '标准化患者（演示模式）',
     role_avatar: '',
-    opening: '你进入内科 OSCE 模拟考站，面前坐着一位因不适前来就诊的年轻女性。本考站以问诊为重点，检查环节将快速带过。\n\n请以接诊医生身份开始问诊，并在结束前完成病历记录。',
+    opening: '你进入内科 OSCE 模拟考站，面前坐着一位因不适前来就诊的年轻女性。本考站以问诊为重点，检查环节将快速带过。\n\n请以接诊医生身份开始问诊，并在右侧病历区同步整理问诊信息。',
     firstStep: '规范问候并核对患者身份'
   }
 }
@@ -968,7 +977,6 @@ async function saveRecord() {
       if (response.stage_info) currentStage.value = response.stage_info
     }
     lastSavedRecord.value = content
-    recordDrawerVisible.value = false
     showTip('success', '病历已保存，并将作为独立评分项目')
   } catch {
     showTip('error', '病历保存失败，请稍后重试')
@@ -977,9 +985,15 @@ async function saveRecord() {
   }
 }
 
+async function focusRecordWorkspace() {
+  await nextTick()
+  recordWorkspaceRef.value?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  recordInputRef.value?.focus?.()
+}
+
 async function onEnd(skipConfirm = false) {
   if (isOsce.value && !medicalRecordSaved.value) {
-    recordDrawerVisible.value = true
+    await focusRecordWorkspace()
     showTip('warning', '请先完成并保存病历记录，再结束训练')
     return
   }
@@ -1195,6 +1209,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: row;
   overflow: hidden;
+}
+
+.chat-container.is-osce-layout {
+  width: min(1560px, calc(100% - 24px));
 }
 
 // 右侧聊天区：必须能收缩，否则长文本会把左侧面板挤出容器
@@ -1413,12 +1431,57 @@ onBeforeUnmount(() => {
 .drawer-intro { display: flex; gap: 12px; margin-bottom: 20px; padding: 14px; border-radius: 12px; color: #506779; background: #f4f7f9; line-height: 1.6; }
 .drawer-intro .el-icon { flex: none; margin-top: 3px; color: #2c7be5; }
 .drawer-intro p { margin: 0; }
+.record-workspace {
+  flex: 0 0 390px;
+  min-width: 0;
+  padding: 18px;
+  border-left: 1px solid #dfe8f0;
+  background: linear-gradient(180deg, #fbfdff 0%, #f4f8fb 100%);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.record-workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.record-title { display: flex; align-items: center; gap: 10px; color: #23465e; font-weight: 800; }
+.record-title > div { display: flex; flex-direction: column; gap: 2px; }
+.record-title small { color: #7f94a5; font-size: 11px; font-weight: 500; }
+.record-title-icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(145deg, #2278cc, #34a0c7);
+  box-shadow: 0 7px 16px rgba(44, 123, 229, 0.2);
+}
+.record-status { padding: 4px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.record-status.saved { color: #247954; background: #e8f7ef; }
+.record-status.unsaved { color: #9b6818; background: #fff3db; }
 .record-intro { display: flex; gap: 12px; margin-bottom: 14px; padding: 14px; border-radius: 12px; background: #eef7ff; color: #456276; }
 .record-intro > .el-icon { flex: none; margin-top: 3px; color: #2c7be5; font-size: 20px; }
 .record-intro strong { color: #244a64; }
 .record-intro p { margin: 4px 0 0; font-size: 13px; line-height: 1.65; }
 .record-framework { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
 .record-framework span { padding: 4px 9px; border: 1px solid #d6e5ef; border-radius: 999px; color: #527087; background: #fff; font-size: 12px; }
+.record-editor { flex: 1; min-height: 0; }
+.record-editor :deep(.el-textarea) { height: 100%; display: flex; flex-direction: column; }
+.record-editor :deep(.el-textarea__inner) {
+  flex: 1;
+  min-height: 360px !important;
+  padding: 14px;
+  border-color: #cfdde8;
+  color: #2f4658;
+  line-height: 1.7;
+  resize: none;
+}
 .record-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
 .record-actions span { font-size: 12px; }
 .record-actions .saved { color: #269368; }
@@ -1441,6 +1504,13 @@ onBeforeUnmount(() => {
 .gender-options :deep(.el-radio-button__inner) { width: 100%; }
 .action-description { margin-bottom: 16px; }
 
+@media (max-width: 1200px) and (min-width: 721px) {
+  .chat-container.is-osce-layout :deep(.avatar-stage) { width: 240px; }
+  .record-workspace { flex-basis: 330px; padding: 14px; }
+  .record-intro { padding: 11px; }
+  .record-intro p { font-size: 12px; }
+}
+
 @media (max-width: 720px) {
   .chat-container {
     width: 100%;
@@ -1454,12 +1524,32 @@ onBeforeUnmount(() => {
   // 手机端始终展示紧凑数字人舞台，避免收起后没有恢复入口。
   .avatar-reopen { display: none; }
   .chat-main { min-height: 0; }
+  .chat-container.is-osce-layout {
+    height: auto;
+    min-height: calc(100dvh - 58px);
+    overflow: visible;
+  }
+  .chat-container.is-osce-layout .chat-main {
+    width: 100%;
+    height: calc(100dvh - 190px);
+    min-height: 560px;
+    flex: none;
+  }
+  .record-workspace {
+    width: 100%;
+    min-height: 690px;
+    flex: none;
+    padding: 18px 12px 30px;
+    border-top: 1px solid #dfe8f0;
+    border-left: 0;
+    overflow: visible;
+  }
+  .record-editor :deep(.el-textarea__inner) { min-height: 460px !important; resize: vertical; }
   .chat-header { padding: 13px 14px; }
   .scene-icon { display: none; }
   .scene-copy .eyebrow, .scene-copy p { display: none; }
   .scene-copy h1 { font-size: 17px; }
   .coach-button span { display: none; }
-  .record-button span { display: none; }
   .chat-actions > .toggle-item { font-size: 0; gap: 0; margin: 0; }
   .chat-actions > .el-button { padding-inline: 9px; }
   .chat-actions { gap: 6px; }
@@ -1474,6 +1564,5 @@ onBeforeUnmount(() => {
   .chat-input { padding: 10px 12px 12px; }
   .input-help span:last-child { display: none; }
   .input-row .el-button { padding-inline: 14px; }
-  :deep(.record-drawer .el-drawer__body) { padding: 12px; }
 }
 </style>

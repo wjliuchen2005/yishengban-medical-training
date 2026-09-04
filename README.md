@@ -21,7 +21,7 @@
 
 1. **第一次独立看病**：以江苏省人民医院普通门诊流程为例，训练挂号、报到、候诊、问诊、缴费、检查、治疗与复诊等关键决策。
 2. **异物梗阻急救**：训练危险识别、呼救、成人海姆立克急救和后续处置；患者脱离最大危险后不会再被时间压力误判为倒地。
-3. **OSCE 模拟问诊与病历书写**：以问诊为主线，体格检查和辅助检查快速过渡，并将学生独立填写的病历记录纳入评分。
+3. **OSCE 模拟问诊与病历书写**：以问诊为主线，体格检查和辅助检查快速过渡，并将学生独立填写的病历记录纳入评分。首次训练使用经审核的固定病例并只变化开场细节，第二次起由场景生成智能体创建新病例。
 
 平台还提供“易心聊”心理陪伴、训练历史、完整回放、记录删除和个人信息管理。页面内的原始“易”生伴数字人会根据所在页面主动介绍功能，并在切换页面时停止上一段语音。
 
@@ -45,7 +45,7 @@ OSCE 场景遵循“问诊重点、检查从简”的设计：
 2. 主诉与现病史：起病情况、主要症状、伴随症状、诱因、演变、诊疗经过和一般情况。
 3. 其他病史：既往史、用药史、过敏史、个人史、婚育史、月经史和家族史，并按病例选择重点。
 4. 快速检查过渡：学生提出一项合理体格检查或辅助检查后，考官在不超过四个短句内给出关键结果并进入病历书写，不反复训练操作细节。
-5. 病历记录：学生独立填写主诉、现病史、相关病史、查体/检查摘要和初步诊断后才能结束训练。
+5. 病历记录：病历编辑区在电脑端常驻于对话旁，手机端紧接对话区展示；学生独立填写主诉、现病史、相关病史、查体/检查摘要和初步诊断后才能结束训练。
 
 OSCE 评分总分 100 分：医学准确性 40 分、沟通温度 20 分、决策合理性 40 分。其中病历记录本身占决策评分的重要部分。
 
@@ -55,7 +55,7 @@ OSCE 评分总分 100 分：医学准确性 40 分、沟通温度 20 分、决�
 - 五类智能体分工协作，形成全过程训练闭环。
 - 观察者教练提示可在训练历史中回看。
 - 危险操作识别与阶段约束，避免错误流程被直接放行。
-- OSCE 独立病历记录框与结构化评分反馈。
+- OSCE 同屏病历编辑区与结构化评分反馈。
 - 对话、语音播报、数字人状态和场景阶段联动。
 - 响应式布局，适配桌面浏览器和手机内置浏览器。
 - 网络评分中断后可重试，不会永久停留在“正在评分”。
@@ -65,11 +65,11 @@ OSCE 评分总分 100 分：医学准确性 40 分、沟通温度 20 分、决�
 
 | 项目 | 结果 |
 |---|---|
-| 后端自动化单元测试 | 21/21 通过 |
+| 后端自动化单元测试 | 22/22 通过 |
 | 前端生产构建 | 通过 |
 | 公网健康检查 | `/api/health` 返回 `{"status":"ok"}` |
 | OSCE 完整流程 | 场景进入、问诊、病历保存、结束与评分链路通过 |
-| 手机端检查 | 数字人可见、场景图片无右侧空白、OSCE 病历抽屉无横向溢出 |
+| 手机端检查 | 数字人可见、场景图片无右侧空白、OSCE 病历编辑区无横向溢出 |
 
 预期结果：学生能够在低风险模拟环境中反复练习首次就医、急救沟通和结构化问诊，形成更明确的流程认知、危险识别能力、沟通意识与复盘习惯。
 
@@ -195,7 +195,7 @@ The current release provides three core training scenarios:
 
 1. **First Independent Hospital Visit**: uses the outpatient workflow of Jiangsu Province Hospital as an example and trains registration, check-in, consultation, payment, examination, treatment, and follow-up decisions.
 2. **Foreign-Body Airway Obstruction First Aid**: trains danger recognition, emergency activation, adult Heimlich maneuvers, and follow-up care. Once the patient is out of immediate danger, the timer no longer incorrectly causes a collapse.
-3. **OSCE History Taking and Medical Record Writing**: focuses on history taking, transitions quickly through physical and auxiliary examinations, and includes the student's independently written medical record in the assessment.
+3. **OSCE History Taking and Medical Record Writing**: focuses on history taking, transitions quickly through physical and auxiliary examinations, and includes the student's independently written medical record in the assessment. The first attempt uses a reviewed fixed case with only minor opening variations; from the second attempt onward, the scenario-generation agent creates a new case.
 
 The platform also includes the “Yixin Chat” wellbeing companion, training history, complete replay, record deletion, and profile management. The original Yishengban digital mascot introduces each page and stops the previous voice line whenever navigation occurs.
 
@@ -219,7 +219,7 @@ The OSCE design emphasizes history taking and keeps examinations deliberately br
 2. Chief complaint and history of present illness: onset, key symptoms, associated symptoms, triggers, progression, previous care, and general condition.
 3. Other history: past medical, medication, allergy, personal, marital/reproductive, menstrual, and family history as relevant.
 4. Fast examination transition: after the student proposes one reasonable physical or auxiliary examination, the examiner returns key findings in no more than four short sentences and moves to record writing.
-5. Medical record: the student must independently complete the chief complaint, HPI, relevant history, examination summary, and preliminary diagnosis before ending the session.
+5. Medical record: on desktop, the editor remains beside the conversation; on mobile, it follows directly below the conversation. The student must independently complete the chief complaint, HPI, relevant history, examination summary, and preliminary diagnosis before ending the session.
 
 The OSCE total is 100 points: medical accuracy 40, communication warmth 20, and decision quality 40. The medical record is a major component of the decision score.
 
@@ -229,7 +229,7 @@ The OSCE total is 100 points: medical accuracy 40, communication warmth 20, and 
 - Five specialized agents working through a complete training loop.
 - Reviewable observer-coach feedback in training history.
 - Unsafe-action interception and stage constraints.
-- Independent OSCE medical-record editor and structured assessment.
+- Side-by-side OSCE medical-record editor and structured assessment.
 - Synchronized dialogue, speech, digital-human state, and scenario stage.
 - Responsive layouts for desktop and mobile in-app browsers.
 - Recoverable rating when a network interruption occurs.
@@ -239,11 +239,11 @@ The OSCE total is 100 points: medical accuracy 40, communication warmth 20, and 
 
 | Check | Result |
 |---|---|
-| Backend automated unit tests | 21/21 passed |
+| Backend automated unit tests | 22/22 passed |
 | Frontend production build | Passed |
 | Public health endpoint | `/api/health` returned `{"status":"ok"}` |
 | Complete OSCE flow | Scenario, interview, record save, completion, and rating path passed |
-| Mobile checks | Digital human visible, scene cover aligned, and OSCE record drawer had no horizontal overflow |
+| Mobile checks | Digital human visible, scene cover aligned, and the OSCE record editor had no horizontal overflow |
 
 Expected outcome: students can repeatedly practice first-time care navigation, emergency communication, and structured history taking in a low-risk environment, improving procedural understanding, danger recognition, communication awareness, and reflective learning.
 

@@ -96,9 +96,41 @@ class ScenarioGeneratorTests(unittest.TestCase):
         generated = generate_scene_context(scene, get_scene_type(scene), "unspecified", [])
 
         self.assertEqual(generated["context"]["focus"], "问诊")
+        self.assertEqual(generated["context"]["training_round"], 1)
+        self.assertEqual(generated["context"]["generator"], "fixed_case_variant")
+        self.assertEqual(generated["context"]["scenario_id"], "OSCE-IM-01")
+        self.assertIsInstance(generated["context"]["fixed_variant"], int)
         self.assertIn("快速", generated["context"]["exam_mode"])
         self.assertIn("规范问候", generated["opening_meta"]["first_step"])
         self.assertNotIn("风湿性心脏病", generated["opening_message"])
+
+    @patch("app.ai.scenario_generator.llm.call_llm_json")
+    def test_osce_second_run_generates_a_new_validated_case(self, mock_llm):
+        mock_llm.return_value = {
+            "scenario_id": "OSCE-AUTO-PNEUMONIA-01",
+            "patient": "32岁男性，教师",
+            "chief_problem": "发热、咳嗽伴右侧胸痛3天",
+            "history_clues": ["黄痰", "深呼吸时胸痛加重", "无慢性肺病史"],
+            "key_findings": ["体温39.1℃", "右下肺呼吸音减低", "血白细胞升高", "胸片见右下肺斑片影"],
+            "reference_diagnosis": ["社区获得性肺炎"],
+        }
+        previous = [{
+            "scene_type": "osce",
+            "scenario_id": "OSCE-IM-01",
+            "hidden_case": {"reference_diagnosis": ["风湿性心脏病"]},
+        }]
+
+        generated = generate_scene_context(
+            make_scene("OSCE模拟问诊与病历书写"), "osce", "unspecified", previous,
+        )
+
+        self.assertEqual(generated["context"]["training_round"], 2)
+        self.assertEqual(generated["context"]["generator"], "agent_generated")
+        self.assertEqual(generated["context"]["scenario_id"], "OSCE-AUTO-PNEUMONIA-01")
+        self.assertIn("社区获得性肺炎", generated["context"]["hidden_case"]["reference_diagnosis"])
+        self.assertNotIn("社区获得性肺炎", generated["opening_message"])
+        sent_prompt = mock_llm.call_args.args[1]
+        self.assertNotIn("风湿性心脏病", sent_prompt)
 
 
 class PromptAndStageTests(unittest.TestCase):

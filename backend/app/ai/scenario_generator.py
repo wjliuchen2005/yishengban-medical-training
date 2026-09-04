@@ -1,7 +1,7 @@
 """动态训练情景生成。
 
-核心病例和急救体征来自功能说明中的审核池；大模型只负责润色生活化细节，
-不能改变核心症状、训练目标或正确处置。大模型不可用时使用本地模板，保证开场可用。
+急救体征和首次 OSCE 病例来自已审核池。首次 OSCE 只改变非医学性开场细节；
+第二次起由场景生成智能体产生新病例并经过结构校验。模型不可用时使用本地备用病例，保证训练可开始。
 """
 from __future__ import annotations
 
@@ -355,40 +355,158 @@ def _choking_context(previous_contexts: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _osce_context() -> dict[str, Any]:
-    """固定 OSCE 考站。病例细节只放在内部上下文，按学生问到的内容逐步释放。"""
+OSCE_FIXED_OPENING_VARIANTS = (
+    "上午的内科 OSCE 模拟考站已经开始，一位因反复不适前来就诊的年轻女性正在等候。",
+    "你进入内科 OSCE 模拟考站，面前坐着一位因不适前来就诊的年轻女性。",
+    "本轮内科 OSCE 模拟已开场，诊室内一位年轻女性正等待你完成接诊。",
+)
+
+OSCE_FALLBACK_CASES = (
+    {
+        "scenario_id": "OSCE-AUTO-F01",
+        "patient": "24岁女性，公司职员",
+        "chief_problem": "心悸、怕热、多汗伴体重下降2个月",
+        "history_clues": ["食欲增加", "易焦虑和失眠", "月经量减少"],
+        "key_findings": ["静息心率112次/分", "手指细颤", "甲状腺弥漫性肿大", "TSH降低、FT4升高"],
+        "reference_diagnosis": ["甲状腺功能亢进症", "Graves病"],
+    },
+    {
+        "scenario_id": "OSCE-AUTO-F02",
+        "patient": "20岁女性，大学生",
+        "chief_problem": "乏力、头晕伴活动后心悸3个月",
+        "history_clues": ["月经量较多", "食欲下降", "无黑便或呕血"],
+        "key_findings": ["面色和结膜苍白", "心率98次/分", "血红蛋白82g/L", "MCV降低、血清铁蛋白降低"],
+        "reference_diagnosis": ["缺铁性贫血"],
+    },
+    {
+        "scenario_id": "OSCE-AUTO-F03",
+        "patient": "27岁男性，研究生",
+        "chief_problem": "反复上腹痛3个月，近1周加重",
+        "history_clues": ["空腹时明显", "进食后可缓解", "无呕血或黑便"],
+        "key_findings": ["上腹轻压痛", "无反跳痛", "血常规无明显异常", "尿素呼气试验阳性"],
+        "reference_diagnosis": ["十二指肠溃疡", "幽门螺杆菌感染"],
+    },
+)
+
+
+def _clean_osce_case(payload: Any) -> dict[str, Any] | None:
+    """仅接受完整、短小的结构化病例。"""
+    if not isinstance(payload, dict):
+        return None
+    cleaned: dict[str, Any] = {}
+    for key in ("scenario_id", "patient", "chief_problem"):
+        value = str(payload.get(key) or "").strip()
+        if not value or len(value) > 180:
+            return None
+        cleaned[key] = value
+    for key in ("history_clues", "key_findings", "reference_diagnosis"):
+        values = payload.get(key)
+        if not isinstance(values, list):
+            return None
+        items = [str(item).strip() for item in values if str(item).strip()]
+        if not items or len(items) > 8 or any(len(item) > 100 for item in items):
+            return None
+        cleaned[key] = items
+    return cleaned
+
+
+def _case_repeats_history(case: dict[str, Any], previous_contexts: list[dict[str, Any]]) -> bool:
+    """在本地对比重复度，不向模型发送任何历史病例内容。"""
+    case_id = case.get("scenario_id")
+    diagnoses = {str(item).strip().lower() for item in case.get("reference_diagnosis", [])}
+    for previous in previous_contexts:
+        old_case = previous.get("hidden_case") or {}
+        old_diagnoses = {str(item).strip().lower() for item in old_case.get("reference_diagnosis", [])}
+        if case_id and case_id == previous.get("scenario_id"):
+            return True
+        if diagnoses & old_diagnoses:
+            return True
+    return False
+
+
+def _generate_osce_case(previous_contexts: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
+    prompt = """你是高校医学生 OSCE 问诊训练的场景生成智能体。
+请自主生成一个新的内科标准化病人病例。
+
+生成原则：
+1. 选择18岁以上常见内科疾病，难度为高校 OSCE 综合站5星；
+2. 问诊是训练重点，必须有可通过追问获得的有区分度线索；
+3. 主诉、病史、体征、检查与诊断必须互相一致，不设计需要立即抢救的危重症；
+4. 不要夹带教学解释、Markdown 或标准答案提示。
+
+仅返回合法 JSON：
+{
+  "scenario_id": "OSCE-AUTO-唯一英数编号",
+  "patient": "年龄、性别和身份",
+  "chief_problem": "规范主诉",
+  "history_clues": ["2至5条需追问线索"],
+  "key_findings": ["3至6条快速给出的关键查体或辅助检查"],
+  "reference_diagnosis": ["1至3项初步诊断"]
+}
+"""
+    try:
+        cleaned = _clean_osce_case(llm.call_llm_json([], prompt, llm.CHAT_REASONING_EFFORT))
+        if cleaned and not _case_repeats_history(cleaned, previous_contexts):
+            return cleaned, "agent_generated"
+    except Exception as exc:
+        logger.info("OSCE 场景生成智能体不可用，使用备用病例：%s", exc)
+
+    recent_ids = {item.get("scenario_id") for item in previous_contexts[-3:]}
+    fallback = _choose_without_recent(list(OSCE_FALLBACK_CASES), recent_ids, key=lambda item: item["scenario_id"])
+    return json.loads(json.dumps(fallback, ensure_ascii=False)), "validated_fallback"
+
+
+def _osce_context(previous_contexts: list[dict[str, Any]]) -> dict[str, Any]:
+    """首训用固定病例小幅变化开场；第二次起生成新病例。"""
+    training_round = len(previous_contexts) + 1
+    if not previous_contexts:
+        hidden_case = {
+            "patient": "21岁女性，农民，江苏句容人",
+            "chief_problem": "反复心慌、气喘、下肢浮肿3年，加重1周",
+            "history_clues": ["反复咽痛", "关节痛"],
+            "key_findings": [
+                "端坐呼吸", "颈静脉怒张", "双肺底湿啰音", "心律绝对不齐",
+                "心尖部收缩期及舒张期杂音", "腹水", "下肢凹陷性水肿",
+            ],
+            "reference_diagnosis": [
+                "风湿性心脏病：二尖瓣狭窄并关闭不全",
+                "心房颤动", "心功能不全", "慢性扁桃体炎", "肠蛔虫感染",
+            ],
+        }
+        scenario_id = "OSCE-IM-01"
+        generator = "fixed_case_variant"
+        variant_index = _random.randrange(len(OSCE_FIXED_OPENING_VARIANTS))
+        opening_lead = OSCE_FIXED_OPENING_VARIANTS[variant_index]
+    else:
+        hidden_case, generator = _generate_osce_case(previous_contexts)
+        scenario_id = hidden_case.pop("scenario_id")
+        variant_index = None
+        opening_lead = "你进入一个新的内科 OSCE 模拟考站，一位因不适前来就诊的成年患者正在等候。"
+
     opening = (
-        "你进入内科 OSCE 模拟考站，面前坐着一位因不适前来就诊的年轻女性。"
+        f"{opening_lead}"
         "本考站以问诊为重点；问诊结束后，体格检查与辅助检查会由考官快速给出关键结果。\n\n"
-        "请以接诊医生身份开始问诊，并在结束前打开“病历记录”完成书写。"
+        "请以接诊医生身份开始问诊，并在右侧病历区同步整理问诊信息。"
     )
     return {
         "opening_message": opening,
         "opening_meta": {
             "kind": "scene_intro",
             "agent_name": "情景生成智能体",
-            "scenario_id": "OSCE-IM-01",
+            "scenario_id": scenario_id,
             "first_step": "规范问候并核对患者身份",
             "quick_actions": [],
         },
         "context": {
             "scene_type": "osce",
+            "scenario_id": scenario_id,
+            "training_round": training_round,
+            "generator": generator,
+            "fixed_variant": variant_index,
             "station": "内科问诊与病历书写",
             "focus": "问诊",
             "exam_mode": "用户提出一项合理查体或辅助检查后，考官一次性简要给出关键结果并快速进入病历书写",
-            "hidden_case": {
-                "patient": "21岁女性，农民，江苏句容人",
-                "chief_problem": "反复心慌、气喘、下肢浮肿3年，加重1周",
-                "history_clues": ["反复咽痛", "关节痛"],
-                "key_findings": [
-                    "端坐呼吸", "颈静脉怒张", "双肺底湿啰音", "心律绝对不齐",
-                    "心尖部收缩期及舒张期杂音", "腹水", "下肢凹陷性水肿",
-                ],
-                "reference_diagnosis": [
-                    "风湿性心脏病：二尖瓣狭窄并关闭不全",
-                    "心房颤动", "心功能不全", "慢性扁桃体炎", "肠蛔虫感染",
-                ],
-            },
+            "hidden_case": hidden_case,
             "interview_framework": [
                 "接诊准备与一般资料", "主诉", "现病史", "既往史和过敏史",
                 "系统回顾", "个人婚育月经史", "家族史",
@@ -400,6 +518,8 @@ def _osce_context() -> dict[str, Any]:
             "target_user_turns": "8-12",
         },
     }
+
+
 def generate_scene_context(
     scene: Any,
     scene_type: str,
@@ -413,7 +533,7 @@ def generate_scene_context(
     if scene_type == "choking":
         return _choking_context(previous_contexts)
     if scene_type == "osce":
-        return _osce_context()
+        return _osce_context(previous_contexts)
 
     opening = getattr(scene, "opening_message", None) or getattr(scene, "background", None) or "训练开始。"
     return {

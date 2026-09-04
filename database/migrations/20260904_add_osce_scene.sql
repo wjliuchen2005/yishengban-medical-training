@@ -7,8 +7,12 @@ SELECT
   '标准化患者',
   '内科OSCE考站。学生扮演接诊医生，AI扮演标准化患者并快速提供必要检查结果。',
   '请以接诊医生身份开始问诊，并在结束前完成病历记录。',
-  4,
+  5,
   1
 WHERE NOT EXISTS (
   SELECT 1 FROM scenes WHERE title = 'OSCE模拟问诊与病历书写'
 );
+
+UPDATE scenes
+SET difficulty = 5
+WHERE title = 'OSCE模拟问诊与病历书写';
