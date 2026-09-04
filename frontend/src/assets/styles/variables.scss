@@ -1,0 +1,50 @@
+// =====================================================
+// “易”生伴 - 全局样式变量
+// 医疗蓝主题，柔和不刺眼
+// =====================================================
+
+// 主色：医疗蓝
+$primary: #2C7BE5;
+$primary-light: #5B9BFF;
+$primary-dark: #1E5BB8;
+
+// 辅助色
+$success: #36B37E;
+$warning: #FFAB00;
+$danger: #FF5630;
+$info: #6B7280;
+
+// 中性色
+$bg: #F5F7FA;
+$bg-white: #FFFFFF;
+$text-primary: #1F2937;
+$text-secondary: #6B7280;
+$border: #E5E7EB;
+
+// 圆角
+$radius-sm: 4px;
+$radius: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+
+// 阴影
+$shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
+$shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+$shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+// 间距
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+
+// 字号
+$fs-xs: 12px;
+$fs-sm: 13px;
+$fs-base: 14px;
+$fs-md: 16px;
+$fs-lg: 18px;
+$fs-xl: 20px;
+$fs-2xl: 24px;
+$fs-3xl: 32px;

@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>机器人数字人 · 表情与动作预览</title>
+<style>
+  :root {
+    --bg: #0f1620;
+    --panel: #172230;
+    --panel-2: #1e2b3a;
+    --line: #2b3a4d;
+    --text: #d9e6f2;
+    --muted: #8ba0b6;
+    --accent: #00d4ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0 0 18px; }
+  .layout { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+
+  .stage {
+    flex: none;
+    width: 320px;
+    height: 470px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: linear-gradient(165deg, #e7f6f2 0%, #c9ece2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .stage .robot-svg { width: 100%; height: 100%; display: block; }
+
+  .panel {
+    flex: 1;
+    min-width: 340px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .group { margin-bottom: 18px; }
+  .group:last-child { margin-bottom: 0; }
+  .group-title {
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 5px 11px;
+    border-radius: 99px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.on {
+    background: var(--accent);
+    color: #062532;
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .val { font-variant-numeric: tabular-nums; font-size: 12px; min-width: 110px; color: var(--muted); }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.8; margin-top: 8px; }
+  label.switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+
+  /* ============ 以下与 RobotAvatar.vue 保持一致 ============ */
+  .robot-svg {
+    --eye-color: #7ec8e3;
+    --screen-color: #5b21b6;
+    --mood-color: #7ec8e3;
+    --pressure: 0;
+  }
+  .robot-body-group, .head-group, .arm, .forearm-group, .torso-group { transform-box: view-box; }
+  .torso-group { transform-origin: 100px 160px; }
+  .robot-body-group { transform-origin: 100px 180px; animation: robot-breathe 2.6s ease-in-out infinite; }
+  @keyframes robot-breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-3px) scale(1.01); }
+  }
+  .head-group { transform-origin: 100px 118px; }
+
+  .antenna-bulb { fill: var(--eye-color); opacity: .85; animation: antenna-pulse 1.8s ease-in-out infinite; transition: fill .4s ease; }
+  .panel-light { fill: var(--eye-color); animation: panel-blink 2.2s ease-in-out infinite; transition: fill .4s ease; }
+  .panel-light:nth-child(2) { animation-delay: .3s; }
+  .panel-light:nth-child(3) { animation-delay: .6s; }
+  .panel-light:nth-child(4) { animation-delay: .9s; }
+  @keyframes panel-blink { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+  @keyframes antenna-pulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+
+  .eye-ring { stroke: var(--eye-color); transition: stroke .45s ease, opacity .35s ease; }
+  .eye-dot { fill: var(--eye-color); transition: fill .45s ease, opacity .35s ease; }
+  .face-screen { transition: fill .6s ease; }
+  .screen-glow { opacity: calc(var(--pressure) * .55); transition: opacity .6s ease, fill .6s ease; }
+  .has-pressure .screen-glow { animation: screen-pulse 1.4s ease-in-out infinite; }
+  @keyframes screen-pulse { 0%,100% { opacity: calc(var(--pressure) * .3); } 50% { opacity: calc(var(--pressure) * .7); } }
+
+  .mouth-shape { stroke: var(--eye-color); opacity: 1; transition: opacity .12s linear; }
+  .mouth-talk { fill: var(--eye-color); opacity: 0; }
+
+  .tear { fill: #6fc8ff; opacity: 0; }
+  .is-mood-crying .tear { animation: tear-fall 1.6s ease-in infinite; }
+  .is-mood-crying .tear-right { animation-delay: .45s; }
+  @keyframes tear-fall {
+    0% { opacity: 0; transform: translateY(0) scale(.6); }
+    25% { opacity: .95; transform: translateY(4px) scale(1); }
+    75% { opacity: .8; transform: translateY(14px) scale(.9); }
+    100% { opacity: 0; transform: translateY(20px) scale(.6); }
+  }
+
+  .arm { transition: transform .45s cubic-bezier(.34,1.3,.64,1); }
+  .arm-left { transform-origin: 52px 132px; }
+  .arm-right { transform-origin: 148px 132px; }
+  .forearm-group { transition: transform .45s cubic-bezier(.34,1.3,.64,1); }
+  .forearm-left { transform-origin: 52px 160px; }
+  .forearm-right { transform-origin: 148px 160px; }
+  .is-action-idle.is-speaking .arm-left { animation: wave-left .9s ease-in-out infinite; }
+  .is-action-idle.is-speaking .arm-right { animation: wave-right .9s ease-in-out infinite; }
+  @keyframes wave-left { 0%,100% { transform: rotate(0); } 50% { transform: rotate(8deg); } }
+  @keyframes wave-right { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-8deg); } }
+
+  /* 深呼吸 */
+  .is-action-deepBreath .torso-group { animation: breathe-expand 3.4s ease-in-out infinite; }
+  .is-action-deepBreath .arm-left { animation: breathe-arm-left 3.4s ease-in-out infinite; }
+  .is-action-deepBreath .arm-right { animation: breathe-arm-right 3.4s ease-in-out infinite; }
+  .is-action-deepBreath .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, breathe-rise 3.4s ease-in-out infinite; }
+  @keyframes breathe-expand { 0%,100% { transform: scale(1,1); } 45% { transform: scale(1.09,1.045); } 70% { transform: scale(.97,1); } }
+  @keyframes breathe-arm-left { 0%,100% { transform: rotate(6deg); } 45% { transform: rotate(26deg); } 70% { transform: rotate(2deg); } }
+  @keyframes breathe-arm-right { 0%,100% { transform: rotate(-6deg); } 45% { transform: rotate(-26deg); } 70% { transform: rotate(-2deg); } }
+  @keyframes breathe-rise { 0%,100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-5px) scale(1.02); } }
+
+  /* 高臂挥手 */
+  .is-action-waveHigh .arm-right { animation: high-wave .85s ease-in-out infinite; }
+  .is-action-waveHigh .arm-left { transform: rotate(10deg); }
+  .is-action-waveHigh .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, wave-bounce .85s ease-in-out infinite; }
+  @keyframes high-wave { 0%,100% { transform: rotate(-168deg); } 50% { transform: rotate(-150deg); } }
+  @keyframes wave-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+  /* 双手捂脖子 */
+  .is-action-clutchThroat .arm-left { animation: clutch-left .55s ease-in-out infinite alternate; }
+  .is-action-clutchThroat .arm-right { animation: clutch-right .55s ease-in-out infinite alternate; }
+  .is-action-clutchThroat .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, choke-shake .42s ease-in-out infinite; }
+  .is-action-clutchThroat .head-group { animation: choke-head .42s ease-in-out infinite alternate; }
+  @keyframes clutch-left { 0% { transform: rotate(-118deg); } 100% { transform: rotate(-126deg); } }
+  @keyframes clutch-right { 0% { transform: rotate(118deg); } 100% { transform: rotate(126deg); } }
+  @keyframes choke-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-1.8px); } 75% { transform: translateX(1.8px); } }
+  @keyframes choke-head { from { transform: rotate(-2.5deg) translateY(-1px); } to { transform: rotate(2.5deg) translateY(1px); } }
+
+  /* 劫后余生拍胸脯 */
+  .is-action-chestPat .arm-left { animation: chest-pat-left .62s ease-in-out infinite; }
+  .is-action-chestPat .arm-right { animation: chest-pat-right .62s ease-in-out infinite; }
+  .is-action-chestPat .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, relief-sway 1.5s ease-in-out infinite; }
+  @keyframes chest-pat-left { 0%,100% { transform: rotate(-78deg); } 50% { transform: rotate(-88deg); } }
+  @keyframes chest-pat-right { 0%,100% { transform: rotate(78deg); } 50% { transform: rotate(88deg); } }
+  @keyframes relief-sway { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-2px) rotate(1.2deg); } }
+  .is-action-chestPat .forearm-left { transform: rotate(-52deg); }
+  .is-action-chestPat .forearm-right { transform: rotate(52deg); }
+
+  /* 精神萎靡 */
+  .is-action-slump .robot-body-group { animation: slump-sink 3.6s ease-in-out infinite; }
+  .is-action-slump .head-group { animation: slump-head 3.6s ease-in-out infinite; }
+  .is-action-slump .arm-left { transform: rotate(14deg); }
+  .is-action-slump .arm-right { transform: rotate(-14deg); }
+  .is-action-slump .eye-ring, .is-action-slump .eye-dot { opacity: .55; }
+  @keyframes slump-sink { 0%,100% { transform: translateY(6px) scaleY(.955); } 50% { transform: translateY(9px) scaleY(.94); } }
+  @keyframes slump-head { 0%,100% { transform: rotate(7deg) translateY(3px); } 50% { transform: rotate(9deg) translateY(4.5px); } }
+
+  /* 伸手 */
+  .is-action-reachOut .arm-right { animation: reach-out 1.5s ease-in-out infinite; }
+  .is-action-reachOut .arm-left { transform: rotate(5deg); }
+  .is-action-reachOut .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, reach-lean 1.5s ease-in-out infinite; }
+  @keyframes reach-out { 0%,100% { transform: rotate(-18deg); } 45% { transform: rotate(-34deg); } }
+  @keyframes reach-lean { 0%,100% { transform: translateY(0); } 45% { transform: translateY(-2px); } }
+  .is-action-reachOut .forearm-right { animation: reach-forearm 1.5s ease-in-out infinite; }
+  @keyframes reach-forearm { 0%,100% { transform: rotate(-30deg); } 45% { transform: rotate(-62deg); } }
+
+  /* 点头 / 摇头 */
+  .is-action-nod .head-group { animation: head-nod .62s ease-in-out infinite; }
+  @keyframes head-nod { 0%,100% { transform: rotate(0) translateY(0); } 30% { transform: rotate(7deg) translateY(4px); } 62% { transform: rotate(-2deg) translateY(-1px); } }
+  .is-action-shakeHead .head-group { animation: head-shake .58s ease-in-out infinite; }
+  @keyframes head-shake { 0%,100% { transform: rotate(0) translateX(0); } 20% { transform: rotate(-8deg) translateX(-2px); } 60% { transform: rotate(8deg) translateX(2px); } 80% { transform: rotate(-4deg) translateX(-1px); } }
+
+  /* 摆手说明 */
+  .is-action-explain .arm-right { animation: explain-wave .75s ease-in-out infinite; }
+  .is-action-explain .arm-left { transform: rotate(6deg); }
+  @keyframes explain-wave { 0%,100% { transform: rotate(-14deg); } 50% { transform: rotate(-38deg); } }
+
+  /* 挂机：拍手 */
+  .is-action-idleClap .arm-left { animation: clap-left .46s ease-in-out infinite alternate; }
+  .is-action-idleClap .arm-right { animation: clap-right .46s ease-in-out infinite alternate; }
+  .is-action-idleClap .forearm-left { transform: rotate(-72deg); }
+  .is-action-idleClap .forearm-right { transform: rotate(72deg); }
+  .is-action-idleClap .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, clap-sway .46s ease-in-out infinite alternate; }
+  @keyframes clap-left { from { transform: rotate(44deg); } to { transform: rotate(60deg); } }
+  @keyframes clap-right { from { transform: rotate(-44deg); } to { transform: rotate(-60deg); } }
+  @keyframes clap-sway { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+
+  /* 挂机：外展双臂 */
+  .is-action-idleStretch .arm-left { animation: stretch-left 3.2s ease-in-out infinite; }
+  .is-action-idleStretch .arm-right { animation: stretch-right 3.2s ease-in-out infinite; }
+  .is-action-idleStretch .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, stretch-rise 3.2s ease-in-out infinite; }
+  @keyframes stretch-left { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(-26deg); } }
+  @keyframes stretch-right { 0%,100% { transform: rotate(10deg); } 50% { transform: rotate(26deg); } }
+  @keyframes stretch-rise { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.02); } }
+
+  /* 挂机：捂喉干呕（异物梗阻场景） */
+  .is-action-idleChoke .arm-left { animation: clutch-left .5s ease-in-out infinite alternate; }
+  .is-action-idleChoke .arm-right { animation: clutch-right .5s ease-in-out infinite alternate; }
+  .is-action-idleChoke .robot-body-group { animation: robot-breathe 2.6s ease-in-out infinite, dry-heave .62s ease-in-out infinite; }
+  .is-action-idleChoke .head-group { animation: dry-heave-head .62s ease-in-out infinite; }
+  @keyframes dry-heave { 0%,100% { transform: translateY(0) scaleY(1); } 35% { transform: translateY(-3px) scaleY(1.025); } 70% { transform: translateY(1.5px) scaleY(.985); } }
+  @keyframes dry-heave-head { 0%,100% { transform: rotate(0) translateY(0); } 35% { transform: rotate(-3.5deg) translateY(-2px); } 70% { transform: rotate(2.5deg) translateY(1.5px); } }
+
+  .is-mood-suffering .face-glow, .is-mood-collapsed .face-glow, .is-mood-choking .face-glow {
+    fill: #a855f7; opacity: .42; transition: opacity .5s ease;
+  }
+  .is-mood-collapsed .face-glow { opacity: .55; }
+  .is-mood-suffering .eye-ring, .is-mood-suffering .eye-dot,
+  .is-mood-collapsed .eye-ring, .is-mood-collapsed .eye-dot,
+  .is-mood-choking .eye-ring, .is-mood-choking .eye-dot {
+    animation: eye-flicker .3s ease-in-out infinite alternate;
+  }
+  @keyframes eye-flicker { from { opacity: .7; } to { opacity: 1; } }
+  .is-mood-listless .eye-ring, .is-mood-listless .eye-dot { opacity: .6; }
+</style>
+</head>
+<body>
+<h1>机器人数字人 · 表情 / 动作 / 时间压迫 预览</h1>
+<p class="sub">与 RobotAvatar.vue 同一套 SVG 与动画参数，用于快速验收效果</p>
+
+<div class="layout">
+  <div class="stage">
+    <svg id="robot" class="robot-svg" viewBox="0 0 200 260" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bodyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffffff" />
+          <stop offset="45%" stop-color="#f0f4f8" />
+          <stop offset="100%" stop-color="#d8e0e8" />
+        </linearGradient>
+        <linearGradient id="faceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#2a2f38" />
+          <stop offset="100%" stop-color="#15181d" />
+        </linearGradient>
+        <filter id="eyeGlow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1d3a52" flood-opacity="0.18" />
+        </filter>
+        <filter id="screenGlow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="5" result="b" />
+          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+
+      <g class="robot-body-group">
+        <g class="legs">
+          <rect x="76" y="198" width="18" height="34" rx="9" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1" />
+          <rect x="106" y="198" width="18" height="34" rx="9" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1" />
+          <ellipse cx="85" cy="235" rx="13" ry="6" fill="#c8d4e0" />
+          <ellipse cx="115" cy="235" rx="13" ry="6" fill="#c8d4e0" />
+        </g>
+
+        <g class="torso-group">
+          <rect x="56" y="106" width="88" height="108" rx="44" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1.5" filter="url(#softShadow)" />
+          <g class="medical-cross">
+            <circle cx="100" cy="152" r="22" fill="#f6fbff" stroke="#b8d4e8" stroke-width="1.5" />
+            <circle cx="100" cy="152" r="18" fill="#e8f4fc" stroke="#4a9bd1" stroke-width="1" />
+            <rect x="94" y="140" width="12" height="24" rx="3" fill="#4a9bd1" />
+            <rect x="86" y="146" width="28" height="12" rx="3" fill="#4a9bd1" />
+            <circle cx="100" cy="128" r="2.5" fill="#7fe3c4" class="panel-light" />
+            <circle cx="122" cy="152" r="2.5" fill="#7fe3c4" class="panel-light" />
+            <circle cx="100" cy="176" r="2.5" fill="#7fe3c4" class="panel-light" />
+            <circle cx="78" cy="152" r="2.5" fill="#7fe3c4" class="panel-light" />
+          </g>
+        </g>
+
+        <g class="head-group">
+          <g class="antenna">
+            <rect x="97" y="14" width="6" height="22" rx="3" fill="#c8d4e0" />
+            <circle cx="100" cy="12" r="6" class="antenna-bulb" />
+          </g>
+          <ellipse cx="100" cy="72" rx="52" ry="46" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1.5" filter="url(#softShadow)" />
+          <ellipse class="face-screen" cx="100" cy="74" rx="42" ry="34" fill="var(--screen-color)" stroke="var(--mood-color)" stroke-opacity="0.55" stroke-width="1.4" />
+          <ellipse class="screen-glow" cx="100" cy="74" rx="42" ry="34" fill="var(--screen-color)" opacity="0" filter="url(#screenGlow)" />
+          <g class="eyes" filter="url(#eyeGlow)">
+            <circle class="eye-ring eye-left" cx="82" cy="70" r="8" fill="none" stroke-width="3" />
+            <circle class="eye-dot eye-left" cx="82" cy="70" r="3" />
+            <circle class="eye-ring eye-right" cx="118" cy="70" r="8" fill="none" stroke-width="3" />
+            <circle class="eye-dot eye-right" cx="118" cy="70" r="3" />
+            <path class="tear tear-left" d="M82 82 C85.4 88.6 87 92 82 95.4 C77 92 78.6 88.6 82 82 Z" />
+            <path class="tear tear-right" d="M118 82 C121.4 88.6 123 92 118 95.4 C113 92 114.6 88.6 118 82 Z" />
+          </g>
+          <path id="mouthShape" class="mouth-shape" d="M90 93 Q100 96 110 93" fill="none" stroke-width="2.4" stroke-linecap="round" />
+          <ellipse id="mouthTalk" class="mouth-talk" cx="100" cy="93" rx="10" ry="1.5" />
+          <circle class="face-glow" cx="100" cy="74" r="36" fill="transparent" opacity="0" />
+        </g>
+
+        <g class="arm arm-left">
+          <rect class="upper-arm" x="44" y="128" width="16" height="32" rx="8" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1" />
+          <circle class="elbow" cx="52" cy="160" r="7" fill="#e6ecf2" stroke="#c8d4e0" stroke-width="1" />
+          <g class="forearm-group forearm-left">
+            <rect class="fore-arm" x="44" y="156" width="16" height="28" rx="8" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1" />
+            <circle class="hand" cx="52" cy="184" r="9" fill="#e6ecf2" stroke="#c8d4e0" stroke-width="1" />
+          </g>
+        </g>
+
+        <g class="arm arm-right">
+          <rect class="upper-arm" x="140" y="128" width="16" height="32" rx="8" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1" />
+          <circle class="elbow" cx="148" cy="160" r="7" fill="#e6ecf2" stroke="#c8d4e0" stroke-width="1" />
+          <g class="forearm-group forearm-right">
+            <rect class="fore-arm" x="140" y="156" width="16" height="28" rx="8" fill="url(#bodyGradient)" stroke="#c8d4e0" stroke-width="1" />
+            <circle class="hand" cx="148" cy="184" r="9" fill="#e6ecf2" stroke="#c8d4e0" stroke-width="1" />
+          </g>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="panel">
+    <div class="group">
+      <div class="group-title">表情（管脸：眼色 / 嘴型 / 泪滴）</div>
+      <div class="chips" id="exprChips"></div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">动作（管身体：手臂 / 头部 / 躯干）</div>
+      <div class="chips" id="actionChips"></div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">时间压迫强度（眼睛 蓝→黄→红，屏幕 黑→红）</div>
+      <div class="slider-row">
+        <input id="pressure" type="range" min="0" max="100" value="0" />
+        <span class="val" id="pressureVal">0% · 状态平稳</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">其他</div>
+      <label class="switch"><input id="talk" type="checkbox" /> 说话中（嘴型开合）</label>
+    </div>
+
+    <p class="hint">
+      <b>异物梗阻常用组合：</b><br />
+      异物哽咽 + 捂住脖子 → 窒息难受 + 深呼吸 → 着急 + 高臂挥手<br />
+      → 精神萎靡 + 瘫软无力 → 流泪 → 松了口气 + 拍胸脯 → 微笑 + 点头<br /><br />
+      <b>第一次独立看病常用组合：</b><br />
+      微笑 / 从容 + 伸手 → 疑惑 + 摇头 → 着急 + 摆手说明 → 从容 + 点头<br />
+      （无对话时数字人会自己在「待机 → 拍手 → 待机 → 外展双臂」之间轮换）
+    </p>
+  </div>
+</div>
+
+<script>
+  var MOOD_COLOR = {
+    neutral: '#7ec8e3', calm: '#4dd8c0', smile: '#5ce6a8', happy: '#4dffb0',
+    crying: '#7fd4ff', anxious: '#ffd166', confused: '#a99cff', relieved: '#4dffdf',
+    suffering: '#d8b4fe', collapsed: '#c084fc', listless: '#a8bdd0', explaining: '#a0e7ff',
+    observing: '#8fd8f8', concerned: '#ffc95c', angry: '#ff6b6b', surprised: '#ffb04d', choking: '#e879f9'
+  }
+  var MOUTH_PATHS = {
+    neutral: 'M90 93 Q100 96 110 93',
+    calm: 'M90 93 Q100 96.5 110 93',
+    smile: 'M88 89.5 Q100 101 112 89.5',
+    happy: 'M87 88 Q100 103 113 88',
+    relieved: 'M88 90 Q100 100.5 112 90',
+    crying: 'M90 96.5 Q100 87.5 110 96.5',
+    anxious: 'M92 95 Q100 90.5 108 95',
+    confused: 'M91 94 Q96 96.5 100 93.5 Q104 91 109 94.5',
+    concerned: 'M90 96 Q100 91.5 110 96',
+    suffering: 'M87 93.5 Q93.5 87.5 100 93.5 Q106.5 99.5 113 93.5',
+    choking: 'M87 93.5 Q93.5 87.5 100 93.5 Q106.5 99.5 113 93.5',
+    collapsed: 'M88 94.5 Q94 99 100 94.5 Q106 90 112 94.5',
+    listless: 'M90 95 Q100 97.5 110 95',
+    explaining: 'M92 93.5 Q100 97 108 93.5',
+    observing: 'M93 94 Q100 96.5 107 94',
+    surprised: 'M93 92 Q100 98 107 92',
+    angry: 'M89 96.5 Q100 89 111 96.5'
+  }
+  var MOOD_LABEL = {
+    neutral: '平静', calm: '从容', smile: '微笑', happy: '开心', crying: '流泪',
+    anxious: '着急', confused: '疑惑', relieved: '松了口气', suffering: '窒息难受',
+    collapsed: '支撑不住', listless: '精神萎靡', explaining: '在说明', observing: '在观察',
+    concerned: '担忧', angry: '激动', surprised: '惊讶', choking: '异物哽咽'
+  }
+  var ACTION_LABEL = {
+    idle: '待机', idleClap: '拍手', idleStretch: '外展双臂', idleChoke: '捂喉干呕',
+    deepBreath: '深呼吸', waveHigh: '高臂挥手', clutchThroat: '捂住脖子',
+    chestPat: '拍胸脯', slump: '瘫软无力', reachOut: '伸手', nod: '点头',
+    shakeHead: '摇头', explain: '摆手说明'
+  }
+  var PRESSURE_STAGE = [
+    { max: 0.33, text: '状态平稳', emoji: '' },
+    { max: 0.66, text: '开始缺氧', emoji: '' },
+    { max: 1.01, text: '濒危', emoji: '' }
+  ]
+
+  var SCREEN_BASE = '#5b21b6'
+  var svg = document.getElementById('robot')
+  var mouthShape = document.getElementById('mouthShape')
+  var mouthTalk = document.getElementById('mouthTalk')
+
+  var state = { expression: 'choking', action: 'clutchThroat', pressure: 0, speaking: false }
+
+  function hexToRgb(hex) {
+    var h = hex.replace('#', '')
+    if (h.length === 3) { h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2] }
+    var n = parseInt(h, 16)
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+  }
+  function lerpColor(c1, c2, t) {
+    var a = hexToRgb(c1), b = hexToRgb(c2)
+    var k = Math.max(0, Math.min(1, t))
+    var r = Math.round(a[0] + (b[0] - a[0]) * k)
+    var g = Math.round(a[1] + (b[1] - a[1]) * k)
+    var bl = Math.round(a[2] + (b[2] - a[2]) * k)
+    return 'rgb(' + r + ', ' + g + ', ' + bl + ')'
+  }
+  function pressureEye(p) {
+    return p <= 0.5 ? lerpColor('#00d4ff', '#ffc830', p / 0.5) : lerpColor('#ffc830', '#ff3b30', (p - 0.5) / 0.5)
+  }
+  function pressureScreen(p) {
+    return p <= 0.5 ? lerpColor('#5b21b6', '#a31251', p / 0.5) : lerpColor('#a31251', '#e02b2b', (p - 0.5) / 0.5)
+  }
+
+  function render() {
+    var base = MOOD_COLOR[state.expression] || MOOD_COLOR.neutral
+    var p = state.pressure
+    // 捂喉干呕时强制「窒息难受」脸色，与机器人表现一致
+    var effExpr = state.action === 'idleChoke' ? 'choking' : state.expression
+    var base = MOOD_COLOR[effExpr] || '#7ec8e3'
+    var eye = p <= 0.02 ? base : lerpColor(base, pressureEye(p), Math.min(1, p * 1.4))
+    var screen = p <= 0.02 ? SCREEN_BASE : lerpColor(SCREEN_BASE, pressureScreen(p), Math.min(1, p * 1.25))
+
+    svg.style.setProperty('--eye-color', eye)
+    svg.style.setProperty('--screen-color', screen)
+    svg.style.setProperty('--mood-color', base)
+    svg.style.setProperty('--pressure', String(p))
+    svg.classList.toggle('has-pressure', p > 0.02)
+    svg.classList.toggle('is-speaking', state.speaking)
+
+    Object.keys(MOOD_LABEL).forEach(function (k) {
+      svg.classList.toggle('is-mood-' + k, k === effExpr)
+    })
+    Object.keys(ACTION_LABEL).forEach(function (k) {
+      svg.classList.toggle('is-action-' + k, k === state.action)
+    })
+
+    mouthShape.setAttribute('d', MOUTH_PATHS[state.expression] || MOUTH_PATHS.neutral)
+  }
+
+  function buildChips(hostId, labels, key) {
+    var host = document.getElementById(hostId)
+    host.innerHTML = ''
+    Object.keys(labels).forEach(function (k) {
+      var b = document.createElement('button')
+      b.className = 'chip' + (state[key] === k ? ' on' : '')
+      b.textContent = labels[k]
+      if (hostId === 'exprChips' && MOOD_COLOR[k]) {
+        b.style.borderColor = MOOD_COLOR[k]
+        b.style.color = MOOD_COLOR[k]
+      }
+      b.onclick = function () {
+        state[key] = k
+        var all = host.querySelectorAll('.chip')
+        for (var i = 0; i < all.length; i++) { all[i].classList.remove('on') }
+        b.classList.add('on')
+        render()
+      }
+      host.appendChild(b)
+    })
+  }
+  buildChips('exprChips', MOOD_LABEL, 'expression')
+  buildChips('actionChips', ACTION_LABEL, 'action')
+
+  var slider = document.getElementById('pressure')
+  var valText = document.getElementById('pressureVal')
+  slider.oninput = function () {
+    state.pressure = Number(slider.value) / 100
+    var stage = PRESSURE_STAGE[2]
+    for (var i = 0; i < PRESSURE_STAGE.length; i++) {
+      if (state.pressure <= PRESSURE_STAGE[i].max) { stage = PRESSURE_STAGE[i]; break }
+    }
+    valText.textContent = Math.round(state.pressure * 100) + '% · ' + stage.text
+    render()
+  }
+
+  var talkBox = document.getElementById('talk')
+  talkBox.onchange = function (e) {
+    state.speaking = e.target.checked
+    render()
+  }
+
+  var mouthCurrent = 0
+  var talkStart = performance.now()
+  function frame() {
+    var target = 0
+    if (state.speaking) {
+      var t = performance.now() - talkStart
+      var k = 4 / 9 // 说话嘴型频率：原 2/3，按需求再降低 1/3
+      var primary = Math.abs(Math.sin(t * 0.026 * k))
+      var harmonic = Math.abs(Math.sin(t * 0.026 * 2.37 * k)) * 0.32
+      var envelope = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(t * 0.0042 * k))
+      target = Math.min(1, (primary * 0.72 + harmonic) * envelope)
+    }
+    mouthCurrent += (target - mouthCurrent) * 0.35
+    mouthTalk.setAttribute('ry', (1.5 + mouthCurrent * 5.5).toFixed(2))
+    mouthTalk.style.opacity = mouthCurrent.toFixed(3)
+    mouthShape.style.opacity = (1 - mouthCurrent).toFixed(3)
+    requestAnimationFrame(frame)
+  }
+  talkBox.addEventListener('change', function () { talkStart = performance.now() })
+
+  render()
+  frame()
+</script>
+</body>
+</html>

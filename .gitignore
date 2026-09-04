@@ -1,0 +1,46 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+key*.txt
+*Personal access tokens*
+
+# Python
+backend/venv/
+.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite-cache/
+frontend/vite.config.js.timestamp-*.mjs
+npm-debug.log*
+
+# Runtime data
+backend/static/avatars/*
+!backend/static/avatars/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
+
+# Internal working notes and superseded handoff files (kept locally)
+notes.md
+task_plan.md
+implementation_report.md
+后端对接文档.md
+南医健康伙伴 功能描述.docx

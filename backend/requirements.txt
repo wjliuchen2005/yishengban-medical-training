@@ -1,0 +1,24 @@
+# FastAPI 依赖
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# 数据库
+sqlalchemy==2.0.25
+pymysql==1.1.0
+cryptography==41.0.7
+
+# 密码加密（直接用 bcrypt 库，不依赖 passlib）
+bcrypt==4.1.2
+
+# JWT
+python-jose[cryptography]==3.3.0
+
+# 跨域
+python-multipart==0.0.9
+
+# .env 文件支持
+python-dotenv==1.0.1
+# DeepSeek（OpenAI 兼容接口）
+openai>=1.0.0
