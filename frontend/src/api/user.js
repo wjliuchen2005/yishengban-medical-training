@@ -24,6 +24,10 @@ export function getUserProfile() {
   })
 }
 
+export function getDailyQuota() {
+  return request({ url: '/user/quota', method: 'GET' })
+}
+
 /**
  * @api {PUT} /api/user/profile 修改用户信息（不含密码）
  * @apiName UpdateUserProfile

@@ -12,6 +12,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from pydantic import ValidationError
 from datetime import datetime
 
 from app.schemas import (
@@ -90,31 +92,33 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
     3. 验证成功生成 JWT token
     4. 返回 token + user
     """
-    # 1. 查询用户
     user = db.query(User).filter(User.username == data.username).first()
-    if not user:
+    registered = False
+    if user is None and data.register_if_missing:
+        try:
+            validated = UserRegisterSchema(username=data.username, password=data.password)
+            if not validated.username.strip():
+                raise ValueError('empty username')
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(422, "新账号需为3–20个字符，密码需为6–20个字符") from exc
+        user = User(username=validated.username, password_hash=hash_password(validated.password), school="南京医科大学")
+        db.add(user)
+        try:
+            db.commit()
+            db.refresh(user)
+            registered = True
+        except IntegrityError:
+            # A concurrent request may have created this account; verify it.
+            db.rollback()
+            user = db.query(User).filter(User.username == data.username).first()
+    if user is None or (not registered and not verify_password(data.password, user.password_hash)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            detail="账号或密码不正确，请检查后重试",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    # 2. 验证密码
-    if not verify_password(data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # 3. 生成 token
     token = create_access_token({"user_id": user.id, "username": user.username})
-
-    # 4. 返回
-    return LoginResponse(
-        token=token,
-        user=UserInfo.model_validate(user)
-    )
+    return LoginResponse(token=token, user=UserInfo.model_validate(user), registered=registered)
 
 
 # =====================================================

@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS psych_sessions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  encrypted_summary TEXT NOT NULL,
+  encrypted_payload LONGTEXT NOT NULL,
+  is_favorite TINYINT DEFAULT 0,
+  is_pinned TINYINT DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_psych_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='易心私密加密历史';

@@ -27,6 +27,7 @@ from app.database import get_db, SessionLocal
 from app.routers.auth import get_current_user
 from app.ai import llm
 from app.ai.prompts import build_scorer_system_prompt, get_scene_type
+from app.voice import with_voice
 
 router = APIRouter(prefix="/api/result", tags=["评分"])
 
@@ -84,14 +85,27 @@ def _clamp(value, lo, hi) -> int:
 
 
 def _build_transcript(messages) -> list:
-    """对话记录（含教练干预），作为评分智能体的输入"""
+    """对话记录（含教练干预），病历只交付最终保存版本。"""
+    latest_record_id = next(
+        (
+            m.id for m in reversed(messages)
+            if m.role == "user" and m.extra and m.extra.get("kind") == "medical_record"
+        ),
+        None,
+    )
     return [
         {
             "role": m.role,
             "content": m.content,
             "kind": m.extra.get("kind") if m.extra else None,
+            "voice_assessments": (m.extra or {}).get('voice_assessments', []),
         }
         for m in messages
+        if not (m.role == "ai" and m.extra and m.extra.get("superseded"))
+        and not (
+            m.role == "user" and m.extra and m.extra.get("kind") == "medical_record"
+            and m.id != latest_record_id
+        )
     ]
 
 
@@ -192,7 +206,7 @@ def _fallback_rating(scene_type: str, messages) -> dict:
         )
         warmth = min(10, opening_points * 3) + min(10, communication_points * 5)
 
-        required_sections = ("主诉", "现病史", "其他病史", "体格检查", "辅助检查", "病历摘要", "初步诊断")
+        required_sections = ("基本信息", "主诉", "现病史", "其他病史", "体格检查", "辅助检查", "病历摘要", "初步诊断")
         section_count = sum(section in record_text for section in required_sections)
         record_points = min(20, round(section_count / len(required_sections) * 20)) if record_text else 0
         reasoning_points = min(10, (4 if hpi_count >= 5 else hpi_count) + (3 if other_count >= 3 else other_count) + (2 if exam_requested else 0))
@@ -395,7 +409,7 @@ def _generate_rating(
         "对话记录：\n" + "\n".join(
             f"[{i}] {m['role']}"
             + (f" (kind={m['kind']})" if m.get("kind") else "")
-            + f": {m['content']}"
+            + ': ' + with_voice(m['content'], m.get('voice_assessments'))
             for i, m in enumerate(transcript)
         )
         + history_text
@@ -572,6 +586,7 @@ async def get_result(
             "timestamp": _to_ms(m.timestamp) if m.timestamp else None,
             "issue_points": ann.get("issue_points"),
             "good_points": ann.get("good_points"),
+            "voice_assessments": (m.extra or {}).get('voice_assessments', []),
         })
 
     scene_type = get_scene_type(scene)

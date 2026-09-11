@@ -57,11 +57,12 @@ export function startChat(sceneId, options = {}) {
  * //   coach_tip: { type: 'info', text: '注意询问咳嗽持续时间' }
  * // }
  */
-export function sendMessage(data) {
+export function sendMessage(data, options = {}) {
   return request({
     url: '/chat/message',
     method: 'POST',
-    data
+    data,
+    signal: options.signal
   })
 }
 
@@ -103,11 +104,11 @@ export function restartChatStage(sessionId) {
 }
 
 /** 向观察者教练提问（教练只引导，不直接给标准答案）。 */
-export function askCoach(sessionId, message) {
+export function askCoach(sessionId, message, voiceReceipts = []) {
   return request({
     url: '/chat/coach',
     method: 'POST',
-    data: { session_id: sessionId, message }
+    data: { session_id: sessionId, message, voice_receipts: voiceReceipts }
   })
 }
 
@@ -125,6 +126,14 @@ export function getChatHistory() {
     url: '/chat/history',
     method: 'GET'
   })
+}
+
+export function updateChatSessionFlags(sessionId, data) {
+  return request({ url: `/chat/session/${sessionId}/flags`, method: 'PATCH', data })
+}
+
+export function getTrainingSummary() {
+  return request({ url: '/chat/history/summary', method: 'GET' })
 }
 
 /** 删除当前用户的一次完整训练记录（会话、消息和评分）。 */

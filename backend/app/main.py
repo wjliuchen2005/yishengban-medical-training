@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # ⭐ 已启用的路由（auth/user/scene/chat/result/psych 全部实现）
-from app.routers import auth, user, scene, chat, result, psych
+from app.routers import auth, user, scene, chat, result, psych, tts, voice
 
 app = FastAPI(
     title="“易”生伴 API",
@@ -64,6 +64,8 @@ app.include_router(scene.router)
 app.include_router(chat.router)
 app.include_router(result.router)
 app.include_router(psych.router)
+app.include_router(tts.router)
+app.include_router(voice.router)
 
 # =====================================================
 # 静态文件：头像上传目录（/static/avatars/xxx.png）

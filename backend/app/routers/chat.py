@@ -20,6 +20,9 @@
 参考实现见 frontend/src/api/chat.js 的注释
 """
 import asyncio
+import json
+import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -47,8 +50,10 @@ from app.ai.prompts import (
     get_scene_type,
 )
 from app.ai.scenario_generator import generate_scene_context
+from app.usage import ensure_quota, record_usage
 
 router = APIRouter(prefix="/api/chat", tags=["对话"])
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
@@ -73,6 +78,9 @@ def _get_scene(db: Session, scene_id: int) -> Scene:
     return scene
 
 
+from app.voice import verify_assessments, with_voice
+
+
 def _history_for_llm(messages) -> list:
     """把数据库消息转成大模型对话历史（coach 消息不参与角色扮演）"""
     start_index = 0
@@ -85,8 +93,8 @@ def _history_for_llm(messages) -> list:
         if m.role == "user" and not (
             m.extra and m.extra.get("kind") in ("coach_q", "medical_record")
         ):
-            history.append({"role": "user", "content": m.content})
-        elif m.role == "ai":
+            history.append({"role": "user", "content": with_voice(m.content, (m.extra or {}).get('voice_assessments'))})
+        elif m.role == "ai" and not (m.extra and m.extra.get("superseded")):
             history.append({"role": "assistant", "content": m.content})
     return history
 
@@ -117,11 +125,15 @@ def _coach_history_for_llm(messages) -> list:
     让学生可以基于上一条追问，而不是每次新开话题。"""
     history = []
     for m in messages:
+        if m.extra and m.extra.get("superseded"):
+            continue
         if m.role == "user":
             if m.extra and m.extra.get("kind") == "coach_q":
-                history.append({"role": "user", "content": f"[向教练提问] {m.content}"})
+                history.append({"role": "user", "content": with_voice(f"[向教练提问] {m.content}", (m.extra or {}).get('voice_assessments'))})
+            elif m.extra and m.extra.get("kind") == "medical_record":
+                continue
             else:
-                history.append({"role": "user", "content": m.content})
+                history.append({"role": "user", "content": with_voice(m.content, (m.extra or {}).get('voice_assessments'))})
         elif m.role == "ai":
             history.append({"role": "assistant", "content": m.content})
         elif m.role == "coach" and m.extra and m.extra.get("kind") == "coach_answer":
@@ -138,9 +150,38 @@ def _session_context(messages) -> dict:
     return {}
 
 
+def _context_with_runtime_state(messages, context: dict, current_user: User) -> dict:
+    """把每轮变化的状态显式传给患者、教练与阶段智能体。"""
+    latest_record = next(
+        (
+            message for message in reversed(messages)
+            if message.role == "user" and message.extra and message.extra.get("kind") == "medical_record"
+        ),
+        None,
+    )
+    return {
+        **(context or {}),
+        "trainee_profile": {
+            "school": current_user.school or "",
+            "real_name": current_user.real_name or "",
+        },
+        "medical_record_status": {
+            "saved": bool(latest_record),
+            "saved_at": _to_ms(latest_record.timestamp) if latest_record and latest_record.timestamp else None,
+            "version": int((latest_record.extra or {}).get("record_version", 0)) if latest_record else 0,
+            "latest_content": latest_record.content.removeprefix("【病历记录】\n") if latest_record else "",
+        },
+    }
+
+
 def _latest_stage_info(messages, scene_type: str) -> dict:
     for message in reversed(messages):
-        if message.extra and isinstance(message.extra.get("stage_info"), dict):
+        if (
+            message.extra
+            and message.extra.get("kind") != "medical_record"
+            and not message.extra.get("superseded")
+            and isinstance(message.extra.get("stage_info"), dict)
+        ):
             return message.extra["stage_info"]
     return get_initial_stage(scene_type)
 
@@ -228,7 +269,7 @@ def _fallback_stage_info(messages, scene_type: str, current: dict) -> dict:
         elif current_id == 5 and record_messages:
             next_id, progress = 5, 100
     else:
-        registration = any(word in user_text for word in ("挂号", "预约", "智能问诊", "智能导诊", "科"))
+        registration = any(word in user_text for word in ("挂号", "预约", "智能分诊", "智能问诊", "智能导诊", "科"))
         printed_report = "报到单" in user_text and any(word in user_text for word in ("自助机", "打印", "打出"))
         clinic_scan = "报到机" in user_text and any(word in user_text for word in ("诊间", "扫码", "扫描", "报到"))
         emergency_triage = "急诊" in user_text and any(word in user_text for word in ("分诊", "评估", "护士"))
@@ -275,7 +316,6 @@ def _fallback_stage_info(messages, scene_type: str, current: dict) -> dict:
     )
 
 
-_PRESSURE_ACTIONS = ("拍背", "海姆立克", "腹部冲击", "胸部冲击", "CPR", "心肺复苏")
 _CHOKING_RECOVERY_MARKERS = (
     "咳出异物",
     "把异物咳出",
@@ -303,18 +343,11 @@ _CHOKING_UNRESOLVED_MARKERS = (
 
 
 def _choking_pressure_resolved(messages, stage_info: dict | None = None) -> bool:
-    """患者已获救或施救已开始时，停止“未施救”倒计时。"""
-    try:
-        if int((stage_info or {}).get("id", 1)) >= 3:
-            return True
-    except (TypeError, ValueError):
-        pass
+    """只有患者明确咳出异物并恢复呼吸后才停止倒计时。
 
-    user_text = " ".join(message.content for message in messages if message.role == "user")
-    if any(word in user_text for word in _PRESSURE_ACTIONS):
-        return True
-
-    # 阶段智能体可能比患者回复晚一拍；患者已明确恢复时不能再补写“倒地”。
+    开始拍背/腹部冲击代表进入抢救过程，并不等于脱险；阶段判断也可能提前，
+    因此不能再用“已施救”或阶段编号解除时间压力。
+    """
     for message in reversed(messages):
         if message.role != "ai":
             continue
@@ -335,7 +368,7 @@ def _time_pressure_status(session: ChatSession, scene_type: str, context: dict, 
 
     elapsed = max(0, int((datetime.utcnow() - session.started_at).total_seconds()))
     deterioration_after = int(context.get("deterioration_after", 75))
-    collapse_after = int(context.get("collapse_after", 135))
+    collapse_after = int(context.get("collapse_after", 165))
     if elapsed >= collapse_after:
         return "用户长时间未采取有效急救，患者已经失去意识、无正常呼吸；按规则转入CPR处置。"
     if elapsed >= deterioration_after:
@@ -376,13 +409,21 @@ def _public_message_extra(message: ChatMessage) -> dict | None:
             "type": message.extra.get("type", "info"),
             "kind": message.extra.get("kind"),
             "should_intervene": bool(message.extra.get("should_intervene")),
+            "superseded": bool(message.extra.get("superseded")),
         }
     if message.role == "ai":
-        return {"kind": message.extra.get("kind"), "stage_info": message.extra.get("stage_info")}
+        return {
+            "kind": message.extra.get("kind"),
+            "stage_info": message.extra.get("stage_info"),
+            "attachments": message.extra.get("attachments") or [],
+            "airway_state": message.extra.get("airway_state"),
+            "speech_text": message.extra.get("speech_text") or "",
+            "superseded": bool(message.extra.get("superseded")),
+        }
     if message.role == "user" and message.extra.get("kind") == "medical_record":
         return {
             "kind": "medical_record",
-            "stage_info": message.extra.get("stage_info"),
+            "record_version": int(message.extra.get("record_version", 1)),
         }
     return None
 
@@ -394,6 +435,109 @@ def _to_ms(dt: datetime) -> int:
     否则会被按本地时区解释，显示时间偏差正好等于时区差（东八区差 8 小时）。
     """
     return int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+_INSURANCE_ATTACHMENT_MARKERS = (
+    "【发送资料：南京医科大学医保资料】",
+    "[发送资料：南京医科大学医保资料]",
+)
+
+
+def _extract_insurance_attachments(content: str, context: dict) -> tuple[str, list[dict[str, str]]]:
+    """把智能体的资料工具标记转换为可点击附件，不展示内部指令。"""
+    if not any(marker in content for marker in _INSURANCE_ATTACHMENT_MARKERS):
+        return content, []
+    cleaned = content
+    for marker in _INSURANCE_ATTACHMENT_MARKERS:
+        cleaned = cleaned.replace(marker, "")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    attachments = [
+        {"title": str(item.get("title") or "医保资料"), "url": str(item.get("url") or "")}
+        for item in context.get("insurance_resources") or []
+        if isinstance(item, dict) and item.get("url")
+    ]
+    return cleaned, attachments
+
+
+def _first_mapping(payload) -> dict:
+    """Normalize occasionally malformed JSON-agent output without breaking chat."""
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, list):
+        return next((item for item in payload if isinstance(item, dict)), {})
+    return {}
+
+
+def _normalize_choking_patient_reply(payload) -> tuple[str, str, str]:
+    """Validate choking state and keep only genuinely speakable patient words."""
+    data = _first_mapping(payload)
+    airway_state = str(data.get("airway_state") or "blocked").strip().lower()
+    if airway_state not in {"blocked", "coughing", "recovered"}:
+        airway_state = "blocked"
+    display_text = str(data.get("display_text") or "").strip()
+    speech_text = str(data.get("speech_text") or "").strip()
+    if airway_state != "recovered":
+        speech_text = ""
+    speech_text = speech_text[:500]
+    if not display_text:
+        display_text = "（患者仍双手紧紧掐住喉咙，无法说话。）"
+    if speech_text and speech_text not in display_text:
+        display_text = f"{display_text}\n患者：“{speech_text}”"
+    return display_text[:2000], airway_state, speech_text
+
+
+def _latest_choking_airway_state(messages) -> str:
+    """Read the last persisted patient state so a provider failure cannot reset recovery."""
+    for message in reversed(messages):
+        if getattr(message, "role", None) != "ai":
+            continue
+        extra = getattr(message, "extra", None) or {}
+        airway_state = str(extra.get("airway_state") or "").strip().lower()
+        if airway_state in {"blocked", "coughing", "recovered"}:
+            return airway_state
+
+        content = str(getattr(message, "content", "") or "")
+        if any(marker in content for marker in _CHOKING_UNRESOLVED_MARKERS):
+            return "blocked"
+        if any(marker in content for marker in _CHOKING_RECOVERY_MARKERS):
+            return "recovered"
+    return "blocked"
+
+
+def _fallback_choking_patient_reply(messages) -> tuple[str, str, str]:
+    """Keep the choking conversation usable when structured model output is unavailable."""
+    airway_state = _latest_choking_airway_state(messages)
+    if airway_state == "recovered":
+        speech_text = "现在好多了，已经能正常呼吸。我会去医院检查，谢谢你。"
+        return (
+            f"（患者呼吸已经平稳，点头回应你的关心。）\n患者：“{speech_text}”",
+            airway_state,
+            speech_text,
+        )
+    if airway_state == "coughing":
+        return "（患者仍在用力咳嗽，暂时说不出完整的话。）", airway_state, ""
+    return "（患者仍双手紧紧掐住喉咙，无法说话。）", "blocked", ""
+
+
+def _should_attach_insurance_resources(user_text: str, context: dict) -> bool:
+    """Treat an explicit NJMU insurance question as a tool request even if the model omits its marker."""
+    school = str((context.get("trainee_profile") or {}).get("school") or "")
+    if "南京医科大学" not in school or not context.get("insurance_resources"):
+        return False
+    text = user_text.strip()
+    insurance_intent = any(word in text for word in ("医保", "参保", "报销", "医疗保险"))
+    asks_for_help = any(word in text for word in (
+        "不了解", "不清楚", "不知道", "怎么", "如何", "政策", "资料", "文件", "依据", "能不能", "可以吗", "请问",
+    ))
+    return insurance_intent and asks_for_help
+
+
+def _insurance_resource_cards(context: dict) -> list[dict[str, str]]:
+    return [
+        {"title": str(item.get("title") or "医保资料"), "url": str(item.get("url") or "")}
+        for item in context.get("insurance_resources") or []
+        if isinstance(item, dict) and item.get("url")
+    ]
 
 
 # =====================================================
@@ -415,6 +559,7 @@ async def start_chat(
     4. 返回 session_id + 开场白 + 场景信息
     """
     scene = _get_scene(db, data.scene_id)
+    ensure_quota(db, current_user)
 
     scene_type = get_scene_type(scene)
     previous_contexts = _recent_scene_contexts(db, current_user.id, scene.id)
@@ -425,6 +570,7 @@ async def start_chat(
         data.gender,
         previous_contexts,
     )
+    record_usage(db, current_user, "场景生成上下文" * 300, generated.get("opening_message", ""))
     initial_stage = get_initial_stage(scene_type)
     initial_stage["total"] = len(STAGE_CATALOG.get(scene_type) or STAGE_CATALOG["first_visit"])
 
@@ -486,9 +632,40 @@ async def send_message(
 
     scene = _get_scene(db, session.scene_id)
     scene_type = get_scene_type(scene)
+    ensure_quota(db, current_user)
+
+    if data.supersede_previous_ai:
+        previous_user = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session.id, ChatMessage.role == "user")
+            .order_by(ChatMessage.id.desc())
+            .first()
+        )
+        previous_ai = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session.id, ChatMessage.role == "ai")
+            .order_by(ChatMessage.id.desc())
+            .first()
+        )
+        # 只废弃上一条用户消息之后生成的回复；若上一轮失败，不误伤更早的正常回复。
+        if previous_ai and previous_user and previous_ai.id > previous_user.id:
+            previous_ai.extra = {**(previous_ai.extra or {}), "superseded": True}
+            following_coaches = (
+                db.query(ChatMessage)
+                .filter(
+                    ChatMessage.session_id == session.id,
+                    ChatMessage.role == "coach",
+                    ChatMessage.id > previous_ai.id,
+                )
+                .all()
+            )
+            for coach in following_coaches:
+                coach.extra = {**(coach.extra or {}), "superseded": True}
+            db.commit()
 
     # 1. 保存用户消息
-    user_msg = ChatMessage(session_id=session.id, role="user", content=data.message)
+    voice_assessments = verify_assessments(data.voice_receipts, current_user.id, f'chat:{session.id}')
+    user_msg = ChatMessage(session_id=session.id, role="user", content=data.message, extra={'voice_assessments': voice_assessments} if voice_assessments else None)
     db.add(user_msg)
     db.commit()
     db.refresh(user_msg)
@@ -501,7 +678,7 @@ async def send_message(
         .all()
     )
     history = _history_for_llm(messages)
-    session_context = _session_context(messages)
+    session_context = _context_with_runtime_state(messages, _session_context(messages), current_user)
     current_stage = _latest_stage_info(messages, scene_type)
     time_pressure = _time_pressure_status(session, scene_type, session_context, messages)
 
@@ -515,6 +692,17 @@ async def send_message(
     )
 
     async def call_patient():
+        if scene_type == "choking":
+            try:
+                payload = await asyncio.to_thread(
+                    llm.call_llm_json, history, patient_prompt, llm.CHAT_REASONING_EFFORT
+                )
+                return _normalize_choking_patient_reply(payload)
+            except Exception:
+                logger.exception(
+                    "Structured choking patient reply failed; using persisted airway-state fallback"
+                )
+                return _fallback_choking_patient_reply(messages)
         return await asyncio.to_thread(llm.generate_reply, patient_prompt, history)
 
     async def call_coach():
@@ -534,7 +722,11 @@ async def send_message(
 
     # 患者回复是主链路，失败则整体失败
     try:
-        ai_content = await patient_task
+        patient_result = await patient_task
+        if scene_type == "choking":
+            ai_content, airway_state, speech_text = patient_result
+        else:
+            ai_content, airway_state, speech_text = patient_result, None, None
     except Exception as e:
         coach_task.cancel()
         stage_task.cancel()
@@ -547,22 +739,31 @@ async def send_message(
     coach_tip = None
     coach_json = None
     try:
-        coach_json = await coach_task
+        coach_json = _first_mapping(await coach_task)
     except Exception:
         pass
 
     try:
-        stage_json = await stage_task
+        stage_json = _first_mapping(await stage_task)
         stage_info = _normalize_stage_info(stage_json, scene_type, current_stage)
     except Exception:
         stage_info = _fallback_stage_info(messages, scene_type, current_stage)
+
+    ai_content, attachments = _extract_insurance_attachments(ai_content, session_context)
+    if not attachments and _should_attach_insurance_resources(data.message, session_context):
+        attachments = _insurance_resource_cards(session_context)
 
     # 4. 保存 AI 消息
     ai_msg = ChatMessage(
         session_id=session.id,
         role="ai",
         content=ai_content,
-        extra={"stage_info": stage_info},
+        extra={
+            "stage_info": stage_info,
+            "attachments": attachments,
+            "airway_state": airway_state,
+            "speech_text": speech_text,
+        },
     )
     db.add(ai_msg)
 
@@ -604,6 +805,12 @@ async def send_message(
             "timestamp": _to_ms(coach_msg.timestamp),
         })
 
+    quota_info = record_usage(
+        db,
+        current_user,
+        patient_prompt + coach_prompt + stage_prompt + json.dumps(history, ensure_ascii=False) * 3,
+        ai_content + json.dumps(coach_json or {}, ensure_ascii=False) + json.dumps(stage_info or {}, ensure_ascii=False),
+    )
     return SendMessageResponse(
         message_id=ai_msg.id,
         role="ai",
@@ -612,6 +819,10 @@ async def send_message(
         coach_tip=coach_tip,
         stage_info=stage_info,
         ui_action=_build_ui_action(scene_type, data.message, coach_json),
+        quota=quota_info,
+        attachments=attachments,
+        airway_state=airway_state,
+        speech_text=speech_text,
     )
 
 
@@ -640,7 +851,7 @@ async def save_medical_record(
         .all()
     )
     current = _latest_stage_info(messages, "osce")
-    required_sections = ("主诉", "现病史", "其他病史", "体格检查", "辅助检查", "病历摘要", "初步诊断")
+    required_sections = ("基本信息", "主诉", "现病史", "其他病史", "体格检查", "辅助检查", "病历摘要", "初步诊断")
 
     def section_has_content(section: str) -> bool:
         start = data.content.find(section)
@@ -657,13 +868,12 @@ async def save_medical_record(
         return len("".join(body.split())) >= 3
 
     completed_sections = [section for section in required_sections if section_has_content(section)]
-    core_complete = all(section_has_content(section) for section in ("主诉", "现病史", "初步诊断"))
+    record_progress = min(100, round(len(completed_sections) / len(required_sections) * 100))
     stage_info = {
-        **STAGE_CATALOG["osce"][-1],
-        "progress": min(100, round(len(completed_sections) / len(required_sections) * 100)),
-        "transitioned": int(current.get("id", 1)) < 5,
-        "finished": core_complete,
-        "reason": "已保存病历记录" if core_complete else "病历仍需补齐主诉、现病史和初步诊断",
+        **current,
+        "transitioned": False,
+        "finished": False,
+        "reason": "病历草稿已更新，继续按当前问诊阶段训练",
         "total": len(STAGE_CATALOG["osce"]),
     }
     stored_content = f"【病历记录】\n{data.content}"
@@ -675,15 +885,25 @@ async def save_medical_record(
         None,
     )
     if record:
+        next_version = int((record.extra or {}).get("record_version", 1)) + 1
         record.content = stored_content
         record.timestamp = datetime.utcnow()
-        record.extra = {"kind": "medical_record", "stage_info": stage_info}
+        record.extra = {
+            "kind": "medical_record",
+            "record_version": next_version,
+            "completed_sections": completed_sections,
+        }
     else:
+        next_version = 1
         record = ChatMessage(
             session_id=session.id,
             role="user",
             content=stored_content,
-            extra={"kind": "medical_record", "stage_info": stage_info},
+            extra={
+                "kind": "medical_record",
+                "record_version": next_version,
+                "completed_sections": completed_sections,
+            },
         )
         db.add(record)
     db.commit()
@@ -693,6 +913,8 @@ async def save_medical_record(
         "content": data.content,
         "timestamp": _to_ms(record.timestamp),
         "completed_sections": completed_sections,
+        "record_progress": record_progress,
+        "record_version": next_version,
         "stage_info": stage_info,
     }
 
@@ -813,6 +1035,7 @@ async def ask_coach(
     session = _get_owned_session(db, int(session_id), current_user)
     if session.ended_at:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="会话已结束")
+    ensure_quota(db, current_user)
 
     scene = _get_scene(db, session.scene_id)
     scene_type = get_scene_type(scene)
@@ -823,18 +1046,19 @@ async def ask_coach(
         .order_by(ChatMessage.id.asc())
         .all()
     )
-    session_context = _session_context(messages)
+    session_context = _context_with_runtime_state(messages, _session_context(messages), current_user)
     current_stage = _latest_stage_info(messages, scene_type)
 
+    voice_assessments = verify_assessments(data.get('voice_receipts', []), current_user.id, f'chat:{session.id}')
     db.add(ChatMessage(
         session_id=session.id,
         role="user",
         content=question,
-        extra={"kind": "coach_q"},
+        extra={"kind": "coach_q", "voice_assessments": voice_assessments},
     ))
     db.commit()
 
-    history = _coach_history_for_llm(messages) + [{"role": "user", "content": f"[向教练提问] {question}"}]
+    history = _coach_history_for_llm(messages) + [{"role": "user", "content": with_voice(f"[向教练提问] {question}", voice_assessments)}]
     qa_prompt = build_coach_qa_prompt(scene, scene_type, session_context, current_stage)
     try:
         answer = await asyncio.to_thread(llm.generate_reply, qa_prompt, history)
@@ -850,12 +1074,19 @@ async def ask_coach(
     db.add(coach_msg)
     db.commit()
     db.refresh(coach_msg)
+    quota_info = record_usage(
+        db,
+        current_user,
+        qa_prompt + json.dumps(history, ensure_ascii=False),
+        answer,
+    )
 
     return {
         "message_id": coach_msg.id,
         "role": "coach",
         "content": answer,
         "timestamp": _to_ms(coach_msg.timestamp),
+        "quota": quota_info,
     }
 
 
@@ -871,8 +1102,8 @@ async def get_time_pressure(
     """
     时间压力状态轮询（仅异物梗阻场景使用）。
 
-    前端定时调用；超时未施救时患者智能体会主动出现恶化/昏倒表现，
-    每种状态只入库一次（幂等）。已开始急救或进入最后阶段后不再恶化。
+    前端定时调用；异物真正排出前持续计时，超时会出现恶化/昏倒表现，
+    每种状态只入库一次（幂等）。开始急救本身不会提前解除时间压力。
     """
     session = _get_owned_session(db, session_id, current_user)
     if session.ended_at:
@@ -894,7 +1125,7 @@ async def get_time_pressure(
     context = _session_context(messages)
     current_stage = _latest_stage_info(messages, scene_type)
 
-    # 已开始有效急救、进入后续处理，或患者已明确恢复 → 永久停止倒计时
+    # 只有患者明确咳出异物并恢复呼吸后才永久停止倒计时；开始施救本身不等于脱险。
     if _choking_pressure_resolved(messages, current_stage):
         return {"status": "resolved"}
 
@@ -906,7 +1137,7 @@ async def get_time_pressure(
 
     elapsed = max(0, int((datetime.utcnow() - session.started_at).total_seconds()))
     deterioration_after = int(context.get("deterioration_after", 75))
-    collapse_after = int(context.get("collapse_after", 135))
+    collapse_after = int(context.get("collapse_after", 165))
 
     if elapsed >= collapse_after and "collapse" not in kinds:
         msg = ChatMessage(
@@ -918,7 +1149,7 @@ async def get_time_pressure(
         db.add(msg)
         db.commit()
         db.refresh(msg)
-        return {"status": "collapsed", "elapsed": elapsed, "message_id": msg.id, "message": msg.content}
+        return {"status": "collapsed", "elapsed": elapsed, "collapse_after": collapse_after, "message_id": msg.id, "message": msg.content}
 
     if elapsed >= deterioration_after and "deterioration" not in kinds and "collapse" not in kinds:
         msg = ChatMessage(
@@ -930,9 +1161,9 @@ async def get_time_pressure(
         db.add(msg)
         db.commit()
         db.refresh(msg)
-        return {"status": "deteriorating", "elapsed": elapsed, "message_id": msg.id, "message": msg.content}
+        return {"status": "deteriorating", "elapsed": elapsed, "collapse_after": collapse_after, "message_id": msg.id, "message": msg.content}
 
-    return {"status": "ok", "elapsed": elapsed}
+    return {"status": "ok", "elapsed": elapsed, "collapse_after": collapse_after}
 
 
 # =====================================================
@@ -979,8 +1210,84 @@ async def get_history(
             "accuracy": result.accuracy if result else None,
             "warmth": result.warmth if result else None,
             "decision": result.decision if result else None,
+            "is_favorite": bool(s.is_favorite),
+            "is_pinned": bool(s.is_pinned),
         })
     return history
+
+
+@router.patch("/session/{session_id}/flags")
+async def update_session_flags(
+    session_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    session = _get_owned_session(db, session_id, current_user)
+    if "is_favorite" in data:
+        session.is_favorite = int(bool(data["is_favorite"]))
+    if "is_pinned" in data:
+        session.is_pinned = int(bool(data["is_pinned"]))
+    db.commit()
+    return {"session_id": session.id, "updated": True}
+
+
+@router.get("/history/summary")
+async def get_history_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        db.query(Result, ChatSession, Scene)
+        .join(ChatSession, ChatSession.id == Result.session_id)
+        .join(Scene, Scene.id == ChatSession.scene_id)
+        .filter(Result.user_id == current_user.id)
+        .all()
+    )
+    if not rows:
+        return {
+            "completed": 0,
+            "headline": "完成第一次训练后，这里会形成你的成长总结。",
+            "highlights": ["愿意开始训练本身就是很好的第一步。"],
+            "opportunities": ["可以从任意一个场景开始，逐步积累自己的训练记录。"],
+            "scenes": [],
+        }
+
+    scene_scores: dict[str, list[int]] = {}
+    total_scores = []
+    normalized_dims = {"医学准确性": [], "沟通温度": [], "决策合理性": []}
+    for result, _session, scene in rows:
+        score = int(result.total_score or 0)
+        total_scores.append(score)
+        scene_scores.setdefault(scene.title, []).append(score)
+        scene_type = get_scene_type(scene)
+        maxima = {"osce": (40, 20, 40), "first_visit": (30, 40, 30), "choking": (40, 30, 30)}.get(scene_type, (40, 30, 30))
+        for label, value, maximum in zip(normalized_dims, (result.accuracy, result.warmth, result.decision), maxima):
+            normalized_dims[label].append(round((int(value or 0) / maximum) * 100))
+
+    scene_rows = [
+        {"scene": title, "count": len(scores), "average": round(sum(scores) / len(scores))}
+        for title, scores in scene_scores.items()
+    ]
+    scene_rows.sort(key=lambda item: (-item["average"], item["scene"]))
+    dimension_avg = {key: round(sum(values) / len(values)) for key, values in normalized_dims.items() if values}
+    strongest = max(dimension_avg, key=dimension_avg.get)
+    growable = min(dimension_avg, key=dimension_avg.get)
+    average = round(sum(total_scores) / len(total_scores))
+    return {
+        "completed": len(rows),
+        "average": average,
+        "headline": f"你已经完成{len(rows)}次训练，综合平均{average}分，持续练习的节奏很好。",
+        "highlights": [
+            f"{strongest}是目前最稳定的优势，平均完成度{dimension_avg[strongest]}%。",
+            f"在“{scene_rows[0]['scene']}”中的表现尤其突出，平均{scene_rows[0]['average']}分。",
+        ],
+        "opportunities": [
+            f"{growable}还可以更好；下一轮可在做决定前多用一句话说明依据。",
+            "不同场景之间交替练习，可以让已经掌握的能力变得更稳定。",
+        ],
+        "scenes": scene_rows,
+    }
 
 
 def _delete_session_records(db: Session, session: ChatSession) -> dict[str, int]:

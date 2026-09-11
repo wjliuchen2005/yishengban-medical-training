@@ -136,57 +136,16 @@ export function extractChokingCharacter(text) {
   return fallback ? fallback[1] : ''
 }
 
-// 在浏览器语音列表里按人物音色偏好挑一个声音
-// 匹配链：voiceHint token → 英文性别关键词 → 中文语音兜底（按性别）
-// 返回 { voice, isFallbackFemale } —— 后者标记「没找到男声，用女声降调模拟」
-export function getPersonaVoice(persona) {
-  if (!isTTSSupported()) return null
-  const voices = window.speechSynthesis.getVoices() || []
-  if (!voices.length) return null
-
-  // 调试：首次调用时把中文语音清单打印到控制台
-  if (!getPersonaVoice._logged) {
-    const zhVoices = voices.filter((v) => /^zh/i.test(v.lang))
-    console.log('[TTS] 可用中文语音:', zhVoices.map((v) => `${v.name} (${v.lang})`).join(' | ') || '(无)')
-    getPersonaVoice._logged = true
-  }
-
-  // 第一轮：按 voiceHint 的中文 token 匹配语音名
-  const hint = persona?.voiceHint || ''
-  if (hint) {
-    const tokens = hint.split('|')
-    const hit = voices.find((v) => tokens.some((t) => v.name.includes(t) || v.lang.includes(t)))
-    if (hit) return { voice: hit, isFallbackFemale: false }
-  }
-
-  // 第二轮：按性别用英文关键词匹配（Windows/Edge 语音名通常是英文）
-  const gender = persona?.gender || ''
-  if (gender === 'male') {
-    // 优先 Edge 在线自然男声（Yunxi 云希 / Yunyang 云扬 / Yunjian 云健），
-    // 其次桌面男声（Kangkang/Zhiwei）——桌面声在部分机器会静默回退女声
-    const maleVoice =
-      voices.find((v) => /^zh/i.test(v.lang) && /online|natural/i.test(v.name) && /yunxi|yunyang|yunjian/i.test(v.name)) ||
-      voices.find((v) => /^zh/i.test(v.lang) && /kang|zhiwei|yunxi|yunyang|yunjian|male|男/i.test(v.name)) ||
-      voices.find((v) => /kang|zhiwei|yunxi|yunyang|yunjian/i.test(v.name))
-    if (maleVoice) return { voice: maleVoice, isFallbackFemale: false }
-  } else if (gender === 'female') {
-    const femaleVoice =
-      voices.find((v) => /^zh/i.test(v.lang) && /huihui|yaoyao|xiaoxiao|xiaoyi|female|女/i.test(v.name)) ||
-      voices.find((v) => /huihui|yaoyao|xiaoxiao|xiaoyi/i.test(v.name))
-    if (femaleVoice) return { voice: femaleVoice, isFallbackFemale: false }
-  }
-
-  // 第三轮：按性别的中文语音兜底
-  const fallback = getChineseVoice(gender)
-  if (fallback) {
-    // 如果是男声但兜底拿到了女声，标记为 fallback
-    const isFallbackFemale = gender === 'male' && !/kang|zhiwei|yunjian|yunyang|male|男/i.test(fallback.name)
-    return { voice: fallback, isFallbackFemale }
-  }
-  return null
-}
-
 export const ROLE_PROFILE = {
+  narrator: {
+    name: '情景旁白',
+    title: '场景引导',
+    bg: 'linear-gradient(165deg,#f2f4fb 0%,#dfe6f5 100%)',
+    accent: '#596a9d',
+    gender: 'male',
+    pitch: 0.96,
+    rate: 0.94
+  },
   patient: {
     name: '患者同学',
     title: '就诊学生',
@@ -289,6 +248,7 @@ export const ACTION_INDEX = {
   waveHigh: 'waveHigh',
   clutchThroat: 'clutchThroat',
   chestPat: 'chestPat',
+  startledPant: 'startledPant',
   slump: 'slump',
   // 看病 / 通用场景
   reachOut: 'reachOut',
@@ -361,6 +321,7 @@ export const ACTION_LABEL = {
   waveHigh: { emoji: '🙋', text: '高臂挥手' },
   clutchThroat: { emoji: '🖐️', text: '捂住脖子' },
   chestPat: { emoji: '🤲', text: '拍胸脯' },
+  startledPant: { emoji: '😮‍💨', text: '受惊后喘气' },
   slump: { emoji: '😞', text: '瘫软无力' },
   reachOut: { emoji: '🤝', text: '伸手' },
   nod: { emoji: '👍', text: '点头' },
@@ -426,6 +387,10 @@ export function stripForSpeech(text) {
     .replace(/【[^】]*】/g, '') // 全角【】身份介绍
     .replace(/（[^）]*）/g, '') // 全角（）动作神态
     .replace(/\([^)]*\)/g, '') // 半角 () 动作神态
+    .replace(/\[[^\]]*\]/g, '') // 半角 [] 舞台提示
+    .replace(/［[^］]*］/g, '') // 全角 ［］舞台提示
+    .replace(/〔[^〕]*〕/g, '') // 全角 〔〕舞台提示
+    .replace(/\*{1,3}/g, '') // Markdown 强调符号不朗读
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -449,8 +414,8 @@ const CHOKING_RULES = [
   },
   // —— 劫后余生：异物排出后的典型反应
   {
-    action: 'chestPat',
-    expression: 'relieved',
+    action: 'startledPant',
+    expression: 'surprised',
     words: ['拍胸', '拍着胸口', '拍胸口', '劫后余生', '缓过来了', '缓过劲儿', '咳出来', '咳出', '终于顺', '大口喘气', '喘上气', '活过来', '好多了', '顺畅了']
   },
   // —— 呼救 / 求助
@@ -715,11 +680,15 @@ export function extractExpressionCue(text) {
 // ---------- 判定当前该谁出场 ----------
 // 首次看病场景：回复开头会带【角色名】，用它精确匹配；没命中再按阶段兜底
 const FIRST_VISIT_ROLE_MAP = {
+  旁白: 'narrator',
+  情景旁白: 'narrator',
   挂号员: 'registrar',
   挂号: 'registrar',
   公众号: 'registrar',
   智能问诊: 'registrar',
   报到: 'registrar',
+  智能分诊: 'registrar',
+  // 兼容历史会话中仍使用旧角色名的消息
   医生: 'doctor',
   诊间: 'doctor',
   接诊: 'doctor',
@@ -736,7 +705,8 @@ export function resolveCharacterRole(role, ctx = {}) {
 
   if (role === 'ai' || role === 'system') {
     if (!ctx.isFirstVisit) return 'patient'
-    const matched = (ctx.content || '').match(/^【([^】]{1,10})】/)
+    if (ctx.kind === 'scene_intro') return 'narrator'
+    const matched = (ctx.content || '').match(/^【([^】]{1,30})】/)
     if (matched) {
       const raw = matched[1]
       for (const key of Object.keys(FIRST_VISIT_ROLE_MAP)) {
@@ -751,102 +721,4 @@ export function resolveCharacterRole(role, ctx = {}) {
     return 'pharmacist'
   }
   return 'patient'
-}
-
-// ---------- 浏览器语音（Web Speech API）----------
-export function isTTSSupported() {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window
-}
-
-let cachedVoice = null
-
-export function getChineseVoice(gender = '') {
-  if (cachedVoice && !gender) return cachedVoice
-  const voices = window.speechSynthesis.getVoices() || []
-  if (gender === 'male') {
-    cachedVoice =
-      voices.find((v) => /zh[-_]CN/i.test(v.lang) && /online|natural/i.test(v.name) && /yunxi|yunyang|yunjian/i.test(v.name)) ||
-      voices.find((v) => /zh[-_]CN/i.test(v.lang) && /kang|zhiwei|yunxi|yunyang|yunjian|male|男/i.test(v.name)) ||
-      voices.find((v) => /zh[-_]CN/i.test(v.lang) && !/huihui|yaoyao|xiaoxiao|female|女/i.test(v.name)) ||
-      voices.find((v) => /^zh/i.test(v.lang) && /kang|zhiwei|yunxi|yunyang|yunjian|male/i.test(v.name)) ||
-      voices.find((v) => /^zh/i.test(v.lang)) ||
-      null
-  } else if (gender === 'female') {
-    cachedVoice =
-      voices.find((v) => /zh[-_]CN/i.test(v.lang) && /female|婷婷|晓|女|huihui|yaoyao|xiaoxiao/i.test(v.name)) ||
-      voices.find((v) => /zh[-_]CN/i.test(v.lang)) ||
-      voices.find((v) => /^zh/i.test(v.lang)) ||
-      null
-  } else {
-    cachedVoice =
-      voices.find((v) => /zh[-_]CN/i.test(v.lang) && /female|婷婷|晓|女|huihui|yaoyao|xiaoxiao/i.test(v.name)) ||
-      voices.find((v) => /zh[-_]CN/i.test(v.lang)) ||
-      voices.find((v) => /^zh/i.test(v.lang)) ||
-      null
-  }
-  return cachedVoice
-}
-
-// 语音列表是异步填充的
-if (isTTSSupported()) {
-  window.speechSynthesis.getVoices()
-  window.speechSynthesis.addEventListener?.('voiceschanged', () => {
-    cachedVoice = null
-    getChineseVoice()
-  })
-}
-
-/**
- * 朗读文本
- * @returns {Promise<void>} 朗读结束（或被打断）时 resolve
- */
-export function speakText(text, opts = {}) {
-  return new Promise((resolve) => {
-    if (!isTTSSupported() || !text) {
-      resolve()
-      return
-    }
-    const synth = window.speechSynthesis
-    synth.cancel()
-
-    const utterance = new SpeechSynthesisUtterance(text)
-    // 优先用调用方指定的音色（人物设定：阿姨/胖叔…），否则按性别选中文音
-    let voice = opts.voice
-    let pitch = opts.pitch ?? 1
-    // 如果调用方传的是 getPersonaVoice 的返回对象（{ voice, isFallbackFemale }），拆开处理
-    if (voice && typeof voice === 'object' && voice.voice) {
-      if (voice.isFallbackFemale && opts.gender === 'male') {
-        // 系统没有中文男声，用女声 + 极低 pitch 模拟男声
-        pitch = Math.min(pitch, 0.45)
-        console.warn('[TTS] 未找到中文男声，用女声降调模拟 (pitch=' + pitch + ')')
-      }
-      voice = voice.voice
-    }
-    // 没有指定 voice 时按性别兜底
-    if (!voice) voice = getChineseVoice(opts.gender || '')
-    if (voice) utterance.voice = voice
-    utterance.lang = 'zh-CN'
-    utterance.pitch = pitch
-    utterance.rate = opts.rate ?? 1
-    utterance.volume = opts.volume ?? 1
-
-    let settled = false
-    const finish = () => {
-      if (settled) return
-      settled = true
-      resolve()
-    }
-
-    utterance.onend = finish
-    utterance.onerror = finish
-    // 有些浏览器切后台会卡住 onend，兜一个超时
-    const estimated = Math.max(1500, (text.length / 4.5) * 1000 + 1200)
-    window.setTimeout(finish, estimated * 2)
-
-    synth.speak(utterance)
-  })
-}
-
-export function stopSpeaking() {
-  if (isTTSSupported()) window.speechSynthesis.cancel()
 }

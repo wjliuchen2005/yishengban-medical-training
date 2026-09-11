@@ -56,6 +56,8 @@ CREATE TABLE chat_sessions (
   started_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '开始时间',
   ended_at DATETIME DEFAULT NULL COMMENT '结束时间',
   is_rated INT DEFAULT 0 COMMENT '是否已评分 0/1',
+  is_favorite TINYINT DEFAULT 0 COMMENT '是否收藏',
+  is_pinned TINYINT DEFAULT 0 COMMENT '是否置顶',
   INDEX idx_user_id (user_id),
   INDEX idx_scene_id (scene_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='对话会话表';
@@ -89,6 +91,30 @@ CREATE TABLE results (
   INDEX idx_session_id (session_id),
   INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评分结果表';
+
+CREATE TABLE psych_sessions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  encrypted_summary TEXT NOT NULL,
+  encrypted_payload LONGTEXT NOT NULL,
+  is_favorite TINYINT DEFAULT 0,
+  is_pinned TINYINT DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_psych_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='易心私密加密历史';
+
+CREATE TABLE daily_usage (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  usage_date VARCHAR(10) NOT NULL,
+  input_tokens INT DEFAULT 0,
+  output_tokens INT DEFAULT 0,
+  cached_input_tokens INT DEFAULT 0,
+  cost_micrormb INT DEFAULT 0,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_daily_usage_user_date (user_id, usage_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日大模型用量保护额度';
 
 -- =====================================================
 -- 7. 插入测试账号

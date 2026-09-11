@@ -13,5 +13,8 @@ const route = useRoute()
 <style lang="scss">
 #app {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 </style>

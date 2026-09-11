@@ -27,6 +27,7 @@ npm-debug.log*
 # Runtime data
 backend/static/avatars/*
 !backend/static/avatars/.gitkeep
+exports/
 *.db
 *.sqlite
 *.sqlite3

@@ -1,5 +1,5 @@
 <template>
-  <aside class="avatar-stage" aria-label="数字人">
+  <aside class="avatar-stage" :class="{ 'has-controls': !!$slots.controls }" aria-label="数字人">
     <button
       type="button"
       class="collapse-btn"
@@ -24,9 +24,11 @@
     </div>
 
     <div class="stage-info">
+      <slot name="controls" />
+      <div class="identity-row">
       <div class="role-line">
         <span class="role-name">{{ displayName }}</span>
-        <span class="role-title">{{ profile.title }}</span>
+        <span class="role-title">{{ roleTitle }}</span>
       </div>
       <div class="badge-row">
         <span
@@ -40,6 +42,7 @@
       <div class="badge-row">
         <span class="gender-badge" :class="gender">{{ genderText }}</span>
         <span class="medical-badge">{{ sceneBadgeText }}</span>
+      </div>
       </div>
     </div>
 
@@ -88,6 +91,10 @@ const actionMeta = computed(() =>
 
 // 若传了人物设定，展示名优先用人物设定（如「胖叔（食堂师傅）」），否则用角色名
 const displayName = computed(() => props.persona?.label || profile.value.name)
+const roleTitle = computed(() => {
+  if (props.scene === 'choking' && props.role === 'patient') return '异物梗阻患者'
+  return profile.value.title
+})
 
 // 人物设定的性别标签文案（声音区分仍保留）
 const gender = computed(() => props.persona?.gender || profile.value.gender || 'female')
@@ -160,6 +167,9 @@ defineExpose({
   gap: 6px;
   text-align: center;
 }
+
+.identity-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; }
+.identity-row .role-line { flex-basis: 100%; }
 
 .role-line {
   display: flex;
@@ -272,12 +282,12 @@ defineExpose({
   .stage-scene { height: 360px; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 980px) {
   .avatar-stage {
     width: 100%;
-    min-height: 132px;
+    min-height: 110px;
     display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-columns: 80px minmax(0, 1fr);
     grid-template-rows: 1fr auto;
     gap: 6px 12px;
     padding: 7px 12px;
@@ -289,8 +299,8 @@ defineExpose({
 
   .stage-scene {
     grid-row: 1 / 3;
-    width: 96px;
-    height: 116px;
+    width: 80px;
+    height: 96px;
     border-radius: 12px;
   }
 
@@ -317,5 +327,30 @@ defineExpose({
   }
 
   .stage-tip { display: none; }
+
+  .avatar-stage.has-controls {
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 12px;
+    padding: 12px;
+    flex-shrink: 0;
+    background: linear-gradient(115deg, #f3fafb, #fff 80%);
+  }
+  .has-controls .stage-scene { width: 82px; height: 112px; grid-row: 1; align-self: start; border-color: #deeaed; background: #f4faf9; }
+  .has-controls .stage-info { gap: 9px; }
+  .has-controls .identity-row { justify-content: flex-start; width: 100%; gap: 5px 8px; }
+  .has-controls .identity-row .role-line { flex-basis: auto; }
+  .has-controls .role-line { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+  .has-controls .role-name { font-size: 12px; color: #355866; font-weight: 700; }
+  .has-controls .role-title { display: none; }
+  .has-controls .badge-row { gap: 4px; }
+  .has-controls .badge-row:last-child { display: none; }
+  .has-controls .stage-actions { grid-column: 1; grid-row: 2; justify-content: center; }
+  .has-controls .stage-actions .act { font-size: 10px; padding: 3px 7px; }
+  .has-controls .identity-row .badge-row { display: contents; }
+  .has-controls .identity-row .badge-row:last-child { display: none; }
+  .has-controls .action-badge { max-width: 100%; }
+  .has-controls .identity-row .mood-badge { white-space: nowrap; }
+  .has-controls .stage-info { align-self: stretch; justify-content: flex-start; }
 }
 </style>

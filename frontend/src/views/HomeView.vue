@@ -4,8 +4,8 @@
 
     <div class="home-container">
       <div class="home-hero">
-        <h1>您好，欢迎来到“易”生伴！很高兴与您见面！</h1>
-        <p>训练急救对话能力，或让 AI 陪你说说话、纾解心情</p>
+        <h1><span class="desktop-copy">您好，欢迎来到“易”生伴！很高兴与您见面！</span><span class="mobile-copy">欢迎来到"易"生伴！</span></h1>
+        <p><span class="desktop-copy">体验完整就医流程，训练急救与问诊能力，或让易心陪你说说话、纾解心情</span><span class="mobile-copy">学就医、练急救、磨问诊，或让易心陪你聊聊天。</span></p>
       </div>
 
       <!-- 心理陪伴入口横幅 -->
@@ -22,7 +22,7 @@
         </div>
         <el-button type="warning" round class="psych-btn">
           <el-icon><ChatDotRound /></el-icon>
-          找易心聊聊
+          <span class="psych-btn-label">找易心聊聊</span>
         </el-button>
       </div>
 
@@ -46,7 +46,7 @@
           <div class="scene-cover">
             <el-image
               :src="sceneCover(scene)"
-              fit="cover"
+              fit="contain"
               class="cover-img"
             >
               <template #error>
@@ -97,7 +97,7 @@ import { getSceneList } from '@/api/scene'
 import defaultCover from '@/assets/images/default-scene.svg'
 import chokingCover from '@/assets/images/scene-choking-cover.webp'
 import firstVisitCover from '@/assets/images/scene-first-visit-cover.webp'
-import osceCover from '@/assets/images/scene-osce-cover.webp'
+import osceCover from '@/assets/images/scene-osce-cover.png'
 
 const router = useRouter()
 const scenes = ref([])
@@ -179,17 +179,25 @@ function traineeRole(scene) {
 
 .home-hero {
   text-align: center;
-  margin-bottom: $spacing-xl;
+  padding: 12px 20px 8px;
+  margin-bottom: 32px;
+  .mobile-copy { display: none; }
 
   h1 {
-    font-size: 32px;
+    font-size: clamp(26px, 2.5vw, 32px);
+    line-height: 1.45;
+    text-wrap: balance;
     color: $text-primary;
-    margin: 0 0 $spacing-sm;
+    margin: 0 0 14px;
   }
 
   p {
     color: $text-secondary;
-    margin: 0;
+    margin: 0 auto;
+    max-width: 760px;
+    font-size: 15px;
+    line-height: 1.8;
+    text-wrap: pretty;
   }
 }
 
@@ -198,8 +206,8 @@ function traineeRole(scene) {
   display: flex;
   align-items: center;
   gap: $spacing-lg;
-  background: linear-gradient(120deg, #fff7ed 0%, #ffedd5 60%, #fde9d0 100%);
-  border: 1px solid #fbd9a8;
+  background: linear-gradient(120deg, #fff9f1 0%, #fcebd9 60%, #f9e4cf 100%);
+  border: 1px solid #efd3b1;
   border-radius: $radius-lg;
   padding: $spacing-lg $spacing-xl;
   margin-bottom: $spacing-xl;
@@ -219,8 +227,8 @@ function traineeRole(scene) {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #fb923c, #f97316);
-    box-shadow: 0 6px 16px rgba(249, 115, 22, 0.35);
+    background: linear-gradient(135deg, #eda562, #df8750);
+    box-shadow: 0 6px 16px rgba(188, 112, 60, 0.24);
 
     .psych-emoji {
       font-size: 44px;
@@ -251,6 +259,17 @@ function traineeRole(scene) {
 
   .psych-btn {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    column-gap: 11px;
+    border-color: #e2a25d;
+    background: #e79a52;
+    color: #fff;
+    margin-left: 10px;
+
+    .psych-btn-label {
+      margin-left: 0;
+    }
   }
 }
 
@@ -280,7 +299,8 @@ function traineeRole(scene) {
     // el-card 内容区默认左右各有 20px 内边距。封面通过负边距贴边时，
     // 宽度也要补回这 40px，否则右侧会固定留下空白。
     width: calc(100% + 40px);
-    height: 180px;
+    aspect-ratio: 16 / 9;
+    height: auto;
     overflow: hidden;
     border-radius: $radius $radius 0 0;
     margin: -20px -20px $spacing;
@@ -346,19 +366,22 @@ function traineeRole(scene) {
   }
 
   .home-hero {
-    margin-bottom: 20px;
+    padding: 4px 2px 0;
+    margin-bottom: 24px;
     text-align: left;
+    .desktop-copy { display: none; }
+    .mobile-copy { display: inline; }
 
     h1 {
-      margin-bottom: 8px;
-      font-size: clamp(25px, 7.4vw, 30px);
+      margin-bottom: 12px;
+      font-size: clamp(25px, 7vw, 28px);
       line-height: 1.35;
       letter-spacing: -0.02em;
     }
 
     p {
       font-size: 14px;
-      line-height: 1.65;
+      line-height: 1.8;
     }
   }
 
@@ -386,7 +409,7 @@ function traineeRole(scene) {
       grid-column: 1 / -1;
       width: 100%;
       min-height: 42px;
-      margin: 2px 0 0;
+      margin: 8px 0 0;
     }
   }
 
@@ -401,7 +424,7 @@ function traineeRole(scene) {
   }
 
   .scene-card {
-    .scene-cover { height: 160px; }
+    .scene-cover { aspect-ratio: 16 / 9; height: auto; }
     .scene-info .scene-desc { min-height: 0; line-height: 1.6; }
     .scene-info .scene-meta { flex-wrap: wrap; gap: 10px; }
   }

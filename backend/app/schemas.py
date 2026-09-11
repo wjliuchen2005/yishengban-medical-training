@@ -58,9 +58,10 @@ class UserRegister(UserBase):
 
 
 class UserLogin(BaseModel):
-    """登录请求"""
+    """登录请求；统一入口可显式创建尚不存在的账号。"""
     username: str
     password: str
+    register_if_missing: bool = False
 
 
 class UserInfo(UserBase):
@@ -76,6 +77,7 @@ class LoginResponse(BaseModel):
     """登录响应"""
     token: str
     user: UserInfo
+    registered: bool = False
 
 
 class UpdateProfile(BaseModel):
@@ -152,6 +154,10 @@ class SendMessageRequest(BaseModel):
     """发送消息请求"""
     session_id: int
     message: str = Field(..., min_length=1, max_length=2000)
+    # 用户在上一轮仍生成时补充/纠正：新请求会使最近一条旧 AI 回复失效，
+    # 重新基于两条连续用户消息生成一次合并后的回答。
+    supersede_previous_ai: bool = False
+    voice_receipts: list[str] = Field(default_factory=list, max_length=32)
 
     @field_validator("message")
     @classmethod
@@ -171,6 +177,10 @@ class SendMessageResponse(BaseModel):
     coach_tip: Optional[Dict[str, Any]] = None
     stage_info: Optional[Dict[str, Any]] = None
     ui_action: Optional[Dict[str, Any]] = None
+    quota: Optional[Dict[str, Any]] = None
+    attachments: List[Dict[str, str]] = Field(default_factory=list)
+    airway_state: Optional[Literal["blocked", "coughing", "recovered"]] = None
+    speech_text: Optional[str] = None
 
 
 class MedicalRecordRequest(BaseModel):

@@ -35,3 +35,23 @@ export function sendPsychMessage(messages) {
     data: { messages }
   })
 }
+
+export function savePsychSession(messages, sessionId = null) {
+  return request({ url: '/psych/sessions', method: 'POST', data: { messages, session_id: sessionId } })
+}
+
+export function getPsychSessions() {
+  return request({ url: '/psych/sessions', method: 'GET' })
+}
+
+export function getPsychSession(id) {
+  return request({ url: `/psych/sessions/${id}`, method: 'GET' })
+}
+
+export function updatePsychSession(id, data) {
+  return request({ url: `/psych/sessions/${id}`, method: 'PATCH', data })
+}
+
+export function deletePsychSession(id) {
+  return request({ url: `/psych/sessions/${id}`, method: 'DELETE' })
+}

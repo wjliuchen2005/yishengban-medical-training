@@ -46,6 +46,12 @@ request.interceptors.response.use(
     return response.data
   },
   (error) => {
+    if (axios.isCancel(error) || error.code === 'ERR_CANCELED') return Promise.reject(error)
+    if (error.config?.url === '/auth/login') {
+      const detail = error.response?.data?.detail
+      ElMessage.error(typeof detail === 'string' ? detail : '暂时无法进入，请检查网络后重试')
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401) {
       // 未登录或 token 过期
       ElMessage.error('登录已过期，请重新登录')
@@ -56,6 +62,8 @@ request.interceptors.response.use(
       ElMessage.error('没有权限')
     } else if (error.response?.status === 404) {
       ElMessage.error('资源不存在')
+    } else if (error.response?.status === 429) {
+      ElMessage.error(error.response?.data?.detail || '您的今日练习额度已用完，请明天再来。')
     } else if (error.response?.status >= 500) {
       ElMessage.error('服务器错误，请稍后重试')
     } else {

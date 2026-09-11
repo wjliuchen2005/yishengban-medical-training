@@ -9,7 +9,7 @@
       element-loading-text="正在生成本次训练情景…"
     >
       <AvatarStage
-        v-if="!avatarCollapsed"
+        v-if="isMobile || !avatarCollapsed"
         ref="stageRef"
         :role="currentSpeakerRole"
         :speaking="stageSpeaking"
@@ -23,7 +23,9 @@
         @collapse="onCollapseAvatar"
         @replay="replaySpeech(lastSpokenMsg)"
         @switch-style="cycleExpression"
-      />
+      >
+        <template #controls><div ref="mobileHeaderTarget" class="mobile-session-controls" /></template>
+      </AvatarStage>
       <button
         v-else
         type="button"
@@ -36,6 +38,7 @@
       </button>
 
       <div class="chat-main">
+      <Teleport :to="mobileHeaderTarget || 'body'" :disabled="!isMobile || !mobileHeaderTarget">
       <header class="chat-header">
         <div class="scene-info">
           <div class="scene-icon" aria-hidden="true">
@@ -44,19 +47,16 @@
           <div class="scene-copy">
             <div class="eyebrow">沉浸式模拟训练</div>
             <h1>{{ sceneInfo.title || '对话训练' }}</h1>
-            <p>{{ sceneInfo.role || '角色信息加载中…' }}</p>
+            <p>{{ isFirstVisit ? currentSpeakerName : (sceneInfo.role || '正在加载…') }}</p>
           </div>
         </div>
 
         <div class="chat-actions">
-          <label v-if="ttsAvailable" class="toggle-item" :class="{ 'is-active': voiceEnabled }">
-            <el-switch v-model="voiceEnabled" size="small" @change="onVoiceToggle" />
-            🔊 语音
-          </label>
+          <VoiceButton v-if="ttsAvailable" :enabled="voiceEnabled" @toggle="value => { voiceEnabled = value; onVoiceToggle(value) }" />
           <el-badge :value="unreadCoachCount" :hidden="!unreadCoachCount" :max="99">
-            <el-button class="coach-button" :type="coachHistory.length ? 'warning' : 'default'" @click="openCoachHistory">
+            <el-button class="coach-button" aria-label="观察者教练记录" :type="coachHistory.length ? 'warning' : 'default'" @click="openCoachHistory">
               <el-icon><Bell /></el-icon>
-              <span>观察者教练</span>
+              <span>{{ isMobile ? '教练' : '观察者教练' }}</span>
             </el-button>
           </el-badge>
           <el-button type="danger" plain :disabled="loading || initializing" @click="onEnd">
@@ -79,6 +79,7 @@
           />
         </div>
       </section>
+      </Teleport>
 
       <section ref="messageListRef" class="chat-messages" aria-live="polite">
         <template v-for="msg in messages" :key="msg.id">
@@ -96,7 +97,8 @@
               <span>第一步</span>
               <strong>{{ msg.meta.first_step }}</strong>
             </div>
-            <div v-if="canUseQuickActions(msg)" class="quick-actions">
+            <el-button v-if="isFirstVisit && !hasUserMessage" class="visit-entry-reopen" round @click="visitEntryVisible = true">选择就医方式</el-button>
+            <div v-if="!isFirstVisit && canUseQuickActions(msg)" class="quick-actions">
               <button
                 v-for="action in msg.meta.quick_actions"
                 :key="action.label"
@@ -139,8 +141,16 @@
               {{ msg.role === 'ai' ? aiAvatarText : '我' }}
             </el-avatar>
             <div class="message-content">
-              <div class="message-sender">{{ msg.role === 'ai' ? (sceneInfo.role || '医院角色') : '我' }}</div>
+              <div class="message-sender">{{ msg.role === 'ai' ? speakerName(msg) : '我' }}</div>
               <div class="message-bubble">{{ msg.content }}</div>
+              <VoiceFeedback v-if="msg.role === 'user'" :items="msg.extra?.voice_assessments || []" />
+              <div v-if="msg.role === 'ai' && msg.extra?.attachments?.length" class="message-attachments">
+                <a v-for="item in msg.extra.attachments" :key="item.url" :href="item.url" target="_blank" rel="noopener">
+                  <span class="attachment-icon"><el-icon><Document /></el-icon></span>
+                  <span><strong>{{ item.title }}</strong><small>点击打开医保资料</small></span>
+                  <el-icon><ArrowRight /></el-icon>
+                </a>
+              </div>
               <button
                 v-if="ttsAvailable && msg.role === 'ai'"
                 type="button"
@@ -153,13 +163,20 @@
           </article>
         </template>
 
-        <article v-if="loading" class="message-wrapper" :class="coachMode ? 'is-coach' : 'is-ai'">
-          <el-avatar :size="40" class="message-avatar" :class="{ 'coach-avatar': coachMode }">
-            {{ coachMode ? '教' : aiAvatarText }}
-          </el-avatar>
+        <article v-if="loading && replyPending" class="message-wrapper is-ai">
+          <el-avatar :size="40" class="message-avatar">{{ aiAvatarText }}</el-avatar>
           <div class="message-content">
-            <div class="message-sender">{{ coachMode ? '观察者教练' : (sceneInfo.role || '医院角色') }}</div>
-            <div class="message-bubble typing" :class="{ 'coach-typing': coachMode }" aria-label="正在回复">
+            <div class="message-sender">{{ currentSpeakerName }}</div>
+            <div class="message-bubble typing" aria-label="正在回复">
+              <span class="dot" /><span class="dot" /><span class="dot" />
+            </div>
+          </div>
+        </article>
+        <article v-if="coachLoading && coachReplyPending" class="message-wrapper is-coach">
+          <el-avatar :size="40" class="message-avatar coach-avatar">教</el-avatar>
+          <div class="message-content">
+            <div class="message-sender">观察者教练</div>
+            <div class="message-bubble typing coach-typing" aria-label="观察者教练正在回复">
               <span class="dot" /><span class="dot" /><span class="dot" />
             </div>
           </div>
@@ -192,22 +209,11 @@
           </span>
           <span>Ctrl + Enter 发送</span>
         </div>
-        <div class="input-row">
-          <el-input
-            v-model="inputText"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 5 }"
-            maxlength="2000"
-            show-word-limit
-            :placeholder="inputPlaceholder"
-            :disabled="loading || initializing"
-            @keydown.ctrl.enter="onSend()"
-          />
-          <el-button type="primary" :loading="loading" :disabled="!inputText.trim() || initializing" @click="onSend()">
-            <el-icon><Promotion /></el-icon>
-            发送
-          </el-button>
-        </div>
+        <VoiceComposer ref="voiceInputRef" v-model="inputText" :session-id="sessionId || undefined"
+          :target="coachMode ? 'coach' : 'patient'" :placeholder="inputPlaceholder"
+          :disabled="initializing || (coachMode && coachLoading)" :sending="coachMode && coachLoading"
+          :send-label="!coachMode && loading ? '补充' : '发送'" @send="onSend()"
+          @recording="onInputRecording" />
       </footer>
       </div>
 
@@ -240,13 +246,13 @@
           v-model="medicalRecordDraft"
           class="record-editor"
           type="textarea"
-          :rows="24"
+          :rows="8"
           maxlength="12000"
-          show-word-limit
           resize="vertical"
           placeholder="请完成主诉、现病史、其他病史、检查结果、病历摘要和初步诊断…"
         />
         <div class="record-actions">
+          <span class="record-count">{{ medicalRecordDraft.length }} / 12000</span>
           <span :class="medicalRecordSaved ? 'saved' : 'unsaved'">
             {{ medicalRecordSaved ? '已保存并纳入评分' : '修改后请保存' }}
           </span>
@@ -258,7 +264,7 @@
     <el-drawer v-model="coachDrawerVisible" title="观察者教练记录" size="min(420px, 92vw)" class="coach-drawer">
       <div class="drawer-intro">
         <el-icon><View /></el-icon>
-        <p>教练只观察并反馈你的表现，不参与患者或医院角色的对话。所有提示都会保留在这里。</p>
+        <p>教练只观察并反馈你的表现，不参与患者或医护人员的对话。所有提示都会保留在这里。</p>
       </div>
       <el-empty v-if="!coachHistory.length" description="完成一次回复后，教练提示会出现在这里" />
       <ol v-else class="coach-history">
@@ -306,8 +312,31 @@
       </el-form>
       <template #footer>
         <el-button @click="router.push('/')">返回场景列表</el-button>
-        <el-button type="primary" :disabled="!selectedGender" @click="beginSession">生成训练情景</el-button>
+        <el-button type="primary" :disabled="!selectedGender" @click="beginSession">下一步</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="visitEntryVisible" title="开启本次就医体验" width="min(940px, 94vw)"
+      class="visit-entry-dialog" top="5vh" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
+      <div class="visit-entry-content" aria-busy="initializing">
+        <section class="visit-situation" aria-label="当前场景情况">
+          <span class="visit-eyebrow">你的情景 · 江苏省人民医院</span>
+          <h2>{{ initializing ? '正在准备本次情景' : '现在，发生了什么？' }}</h2>
+          <p v-if="initializing" role="status">正在根据你的选择生成情景，请稍候…</p>
+          <p v-else>{{ visitSituation }}</p>
+        </section>
+        <div class="visit-options-heading"><h3>你想从哪里开始？</h3><span>选择一种方式，进入模拟</span></div>
+        <div class="visit-entry-options">
+          <button v-for="entry in visitEntries" :key="entry.id" type="button" class="visit-entry-card"
+            :disabled="initializing || loading" @click="chooseVisitEntry(entry)">
+            <img :src="entry.image" alt="" width="360" height="240" />
+            <span class="visit-entry-copy"><strong>{{ entry.title }}</strong><span>{{ entry.description }}</span></span>
+            <span class="visit-entry-arrow" aria-hidden="true">↗</span>
+          </button>
+        </div>
+        <p class="visit-entry-note">智能分诊是可选功能，选择后模拟省人医微信公众号相关功能。</p>
+      </div>
+      <template #footer><el-button text @click="visitEntryVisible = false">稍后选择</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="actionDialogVisible" :title="pendingAction?.title || '补充动作细节'" width="min(560px, 94vw)">
@@ -331,21 +360,26 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppHeader from '@/components/AppHeader.vue'
 import AvatarStage from '@/components/AvatarStage.vue'
+import VoiceButton from '@/components/VoiceButton.vue'
+import VoiceComposer from '@/components/VoiceComposer.vue'
+import VoiceFeedback from '@/components/VoiceFeedback.vue'
+import { useMobileViewport } from '@/utils/useMobileViewport'
+
+const isMobile = useMobileViewport()
+const mobileHeaderTarget = ref(null)
 import { useUserStore } from '@/stores/user'
 import { askCoach, endChat, getSession, getSessionPressure, restartChatStage, saveMedicalRecord, sendMessage, startChat } from '@/api/chat'
 import { getSceneDetail } from '@/api/scene'
 import {
-  isTTSSupported,
   stripForSpeech,
   extractPerformanceCue,
   resolveCharacterRole,
   resolvePersona,
-  getPersonaVoice,
   extractChokingCharacter,
   PERSONA_LIST,
   ROLE_PROFILE
 } from '@/utils/live2dMap'
-import { unifiedSpeak, stopUnifiedSpeaking, preheatMeSpeak } from '@/utils/ttsService'
+import { isMiMoTTSSupported, unifiedSpeak, stopUnifiedSpeaking } from '@/utils/ttsService'
 
 const route = useRoute()
 const router = useRouter()
@@ -354,8 +388,19 @@ const userStore = useUserStore()
 const sceneId = route.params.sceneId
 const sessionId = ref(null)
 const sceneInfo = ref({})
+// Keep scene classification ahead of watchers. This prevents a temporal-dead-
+// zone crash after production minification in embedded WebViews such as WeChat.
+const isFirstVisit = computed(() => sceneInfo.value.title?.includes('独立看病'))
+const isOsce = computed(() => /OSCE|模拟问诊|病例书写/i.test(sceneInfo.value.title || ''))
+const isChoking = computed(() => sceneInfo.value.title?.includes('梗阻'))
 const messages = ref([])
 const inputText = ref('')
+const voiceInputRef = ref(null)
+const inputRecording = ref(false)
+function onInputRecording(active) {
+  inputRecording.value = active
+  if (active) stopVoice()
+}
 const loading = ref(false)
 const initializing = ref(true)
 const messageListRef = ref(null)
@@ -366,6 +411,18 @@ const unreadCoachCount = ref(0)
 const currentStage = ref(null)
 const setupVisible = ref(false)
 const selectedGender = ref('')
+const visitEntryVisible = ref(false)
+const visitSituation = computed(() => messages.value.find((message) => message.role === 'system')?.content || messages.value[0]?.content || '')
+const visitEntries = [
+  { id: 'online', title: '线上预约', description: '提前选择科室与时间', image: '/images/visit-entry/online.png', value: '我选择线上预约挂号。' },
+  { id: 'counter', title: '线下窗口', description: '到院后寻求人工帮助', image: '/images/visit-entry/counter.png', value: '我选择到医院线下现场挂号。' },
+  { id: 'wechat', title: '智能分诊', description: '省人医微信公众号相关功能', image: '/images/visit-entry/wechat.png', value: '我不确定该挂哪个科，先打开省人医微信公众号使用智能分诊。' }
+]
+function chooseVisitEntry(entry) {
+  if (initializing.value || loading.value) return
+  visitEntryVisible.value = false
+  onSend(entry.value, { target: 'patient' })
+}
 const backendAvailable = ref(true)
 const pendingAction = ref(null)
 const actionDialogVisible = ref(false)
@@ -373,8 +430,10 @@ const actionForm = reactive({})
 const recordWorkspaceRef = ref(null)
 const recordInputRef = ref(null)
 const recordSaving = ref(false)
-const recordSections = ['主诉', '现病史', '其他病史', '体格检查', '辅助检查', '病历摘要', '初步诊断/鉴别']
-const MEDICAL_RECORD_TEMPLATE = `主诉：
+const recordSections = ['基本信息', '主诉', '现病史', '其他病史', '体格检查', '辅助检查', '病历摘要', '初步诊断/鉴别']
+const MEDICAL_RECORD_TEMPLATE = `基本信息（姓名、性别、年龄、民族、婚姻、职业、籍贯、住址、记录日期、病史陈述者及可靠程度）：
+
+主诉：
 
 现病史：
 
@@ -393,11 +452,20 @@ const medicalRecordDraft = ref(MEDICAL_RECORD_TEMPLATE)
 const lastSavedRecord = ref('')
 let coachTipTimer = null
 let pressureTimer = null
+let quotaWarningShown = false
 // 结束训练后主动跳转（已确认过），路由守卫不再二次弹窗
 let leavingAfterEnd = false
 
 // 教练问答模式：输入直接发给观察者教练，不进入患者对话
 const coachMode = ref(false)
+const coachLoading = ref(false)
+// Network/TTS work may continue after a message becomes visible. These flags
+// represent only the period before text and audio are ready, so a second
+// "..." bubble never appears underneath an already displayed reply.
+const replyPending = ref(false)
+const coachReplyPending = ref(false)
+// 患者回复生成期间，学生可继续补充；旧回复将被废弃，再合并上下文生成一次新回复。
+const queuedPatientMessages = ref([])
 // 时间压力（仅异物梗阻）：超时未施救患者会恶化甚至昏倒，可关闭
 const timePressureEnabled = ref(localStorage.getItem('yishengban_time_pressure') !== 'off')
 const finishPromptShown = ref(false)
@@ -405,8 +473,8 @@ const finishPromptShown = ref(false)
 // ---------- 左侧机器人数字人 ----------
 const stageRef = ref(null)
 const avatarCollapsed = ref(localStorage.getItem('yishengban_avatar_collapsed') === '1')
-const ttsAvailable = ref(isTTSSupported())
-const voiceEnabled = ref(localStorage.getItem('yishengban_voice') === '1')
+const ttsAvailable = ref(isMiMoTTSSupported())
+const voiceEnabled = ref(localStorage.getItem('yishengban_voice') !== '0')
 const currentSpeakerRole = ref('patient')
 const currentExpression = ref('neutral')
 // 肢体动作（与表情解耦）：捂脖子 / 高臂挥手 / 深呼吸 / 拍胸脯 / 伸手 / 点头 / 摇头 …
@@ -442,13 +510,15 @@ const PERFORMANCE_CYCLE = [
   { expression: 'neutral', action: 'idle' }
 ]
 
-const canReplay = computed(() => !!lastSpokenMsg.value)
+const canReplay = computed(() => {
+  const message = lastSpokenMsg.value
+  if (!message) return false
+  if (isChoking.value && message.role === 'ai') return !!message.extra?.speech_text
+  return true
+})
 
 const userAvatar = computed(() => userStore.user?.avatar_url || '')
-const isFirstVisit = computed(() => sceneInfo.value.title?.includes('独立看病'))
-const isOsce = computed(() => /OSCE|模拟问诊|病例书写/i.test(sceneInfo.value.title || ''))
 // 异物梗阻场景：左侧数字人是「被噎住的患者」，需要按人物设定（阿姨/胖叔…）换声音与形象
-const isChoking = computed(() => sceneInfo.value.title?.includes('梗阻'))
 // 当前场景类型：choking（异物梗阻）/ firstVisit（第一次独立看病）/ other
 // 决定机器人用哪套「表情 + 动作」规则
 const sceneKey = computed(() => {
@@ -459,11 +529,23 @@ const sceneKey = computed(() => {
 })
 // 后端开场元信息里给出的患者人物（如「体型肥胖的食堂师傅」），用于匹配音色/形象
 const chokingCharacter = ref('')
-const currentPersona = computed(() =>
-  isChoking.value && currentSpeakerRole.value === 'patient' && chokingCharacter.value
-    ? resolvePersona(chokingCharacter.value)
-    : null
-)
+const voiceCast = ref({})
+const currentPersona = computed(() => {
+  if (isChoking.value && currentSpeakerRole.value === 'patient' && chokingCharacter.value) return resolvePersona(chokingCharacter.value)
+  const cast = voiceCast.value?.[currentSpeakerRole.value]
+  return isFirstVisit.value ? { gender: cast?.gender, label: currentSpeakerName.value } : (cast ? { gender: cast.gender } : null)
+})
+function speakerName(msg) {
+  if (!isFirstVisit.value) return sceneInfo.value.role || '患者'
+  const named = (msg?.content || '').match(/^【([^】]{1,30})】/)
+  if (named && !/角色|发送资料/.test(named[1])) return named[1]
+  const role = resolveCharacterRole('ai', { isFirstVisit: true, content: msg?.content, stageId: msg?.extra?.stage_info?.id || currentStage.value?.id, kind: msg?.meta?.kind || msg?.extra?.kind })
+  return voiceCast.value?.[role]?.display_name || ROLE_PROFILE[role]?.name || '就医引导'
+}
+const currentSpeakerName = computed(() => {
+  const last = [...messages.value].reverse().find(m => m.role === 'ai')
+  return last ? speakerName(last) : '就医引导'
+})
 // AI 角色头像文字：异物梗阻场景扮演患者，首次看病扮演医院流程角色
 const aiAvatarText = computed(() => (isFirstVisit.value ? '医' : '患'))
 const hasUserMessage = computed(() => messages.value.some((message) => message.role === 'user'))
@@ -490,7 +572,7 @@ const scenePlaceholders = {
   },
   2: {
     title: '第一次独立看病',
-    role: '医院流程角色（演示模式）',
+    role: '就医引导',
     role_avatar: '',
     opening: '周末留校期间，你出现鼻塞、咽痛和低热，这是你第一次独自处理就医流程。\n\n你的第一步是选择挂号方式和科室。请告诉我你准备怎么做。',
     firstStep: '选择挂号方式'
@@ -517,7 +599,8 @@ function applySpeaker(msg) {
   const role = resolveCharacterRole(msg.role, {
     isFirstVisit: isFirstVisit.value,
     content: msg.content,
-    stageId: currentStage.value?.id
+    stageId: currentStage.value?.id,
+    kind: msg.meta?.kind || msg.extra?.kind
   })
   currentSpeakerRole.value = role
 
@@ -560,40 +643,103 @@ function recomputeSpeaker() {
 const AUTO_SPEAK_MAX = 400
 
 // 朗读一条消息：正文剔除【】和（）后再念，同时驱动嘴型
-async function speakMessage(msg, { force = false } = {}) {
-  if (!msg || !voiceEnabled.value || !ttsAvailable.value) return
-  const text = stripForSpeech(msg.content)
-  if (!text) return
-  if (!force && text.length > AUTO_SPEAK_MAX) return
+async function speakMessage(msg, { force = false, onReady } = {}) {
+  if (!msg || !voiceEnabled.value || !ttsAvailable.value || inputRecording.value) {
+    onReady?.()
+    return
+  }
+  const speakingRole = resolveCharacterRole(msg.role, {
+    isFirstVisit: isFirstVisit.value,
+    content: msg.content,
+    stageId: currentStage.value?.id,
+    kind: msg.meta?.kind || msg.extra?.kind
+  })
+  // 异物梗阻只朗读后端已校验的患者原话；动作、咳嗽和喘气永远不进入 TTS。
+  const text = isChoking.value && speakingRole === 'patient'
+    ? String(msg.extra?.speech_text || '').trim()
+    : stripForSpeech(msg.content)
+  if (!text) { onReady?.(); return }
+  if (!force && text.length > AUTO_SPEAK_MAX) { onReady?.(); return }
 
+  // 在等待 TTS 启动前锁定消息自己的角色，避免此时切换“问教练”后串用音色。
+  const speakingPersona = isChoking.value && speakingRole === 'patient' && chokingCharacter.value
+    ? resolvePersona(chokingCharacter.value)
+    : null
   const gen = ++speakGen
   stopUnifiedSpeaking()
   await nextTick()
-  try {
+  const fallbackExpression = isChoking.value ? 'choking' : 'neutral'
+  const cue = msg.role === 'coach'
+    ? { expression: 'explaining', action: 'explain' }
+    : extractPerformanceCue(msg.content, sceneKey.value, fallbackExpression)
+  let readyCalled = false
+  const ready = () => {
+    if (readyCalled) return
+    readyCalled = true
+    onReady?.()
     stageRef.value?.startTalk?.()
     stageSpeaking.value = true
+  }
+  try {
     // 异物梗阻患者：用「人物设定」的音色（阿姨/胖叔…），否则用角色默认音色
-    const persona = currentPersona.value
-    const profile = ROLE_PROFILE[currentSpeakerRole.value] || {}
-    const voice = persona ? getPersonaVoice(persona) : null
-    const gender = persona?.gender || profile.gender || ''
+    const persona = speakingPersona
+    const profile = ROLE_PROFILE[speakingRole] || {}
+    const gender = persona?.gender || voiceCast.value?.[speakingRole]?.gender || profile.gender || ''
+    const castVoice = voiceCast.value?.[speakingRole]?.voice
     await unifiedSpeak(text, {
-      voice,
+      role: speakingRole,
+      emotion: cue.expression,
       gender,
+      mimoVoice: castVoice,
+      onReady: ready,
       pitch: persona?.pitch ?? profile.pitch ?? 1,
       rate: persona?.rate ?? profile.rate ?? 1
     })
+  } catch (error) {
+    // MiMo 是唯一语音源。失败时只显示文字，不会混入系统或 meSpeak 声音。
+    if (error?.name !== 'AbortError') console.warn('[TTS] MiMo 语音不可用:', error?.message || error)
+    onReady?.()
   } finally {
     if (gen === speakGen) stageSpeaking.value = false
   }
 }
 
 // 角色消息统一入口：入流 + 驱动数字人 + 自动朗读
-function appendCharacterMessage(msg) {
-  messages.value.push(msg)
-  applySpeaker(msg)
-  lastSpokenMsg.value = msg
-  speakMessage(msg)
+async function appendCharacterMessage(msg) {
+  const roleSegments = splitRoleSegments(msg)
+  if (roleSegments.length > 1) {
+    for (const [index, segment] of roleSegments.entries()) {
+      await appendCharacterMessage({ ...msg, id: `${msg.id}-${index}`, content: segment, extra: index === roleSegments.length - 1 ? msg.extra : {} })
+    }
+    return
+  }
+  let displayed = false
+  const display = () => {
+    if (displayed) return
+    displayed = true
+    if (msg.role === 'coach') coachReplyPending.value = false
+    else replyPending.value = false
+    messages.value.push(msg)
+    applySpeaker(msg)
+    lastSpokenMsg.value = msg
+    scrollToBottom()
+  }
+  let markReady
+  const ready = new Promise((resolve) => { markReady = resolve })
+  const reveal = () => { display(); markReady() }
+  const playback = speakMessage(msg, { onReady: reveal })
+    .catch((error) => console.warn('[TTS] 角色语音播放失败:', error))
+    .finally(reveal)
+  // 只等到音频准备好并与文字同时出现，不等待整段播放结束，输入区可立即恢复。
+  await ready
+  // 同一条 AI 文案出现多个角色时，按台词顺序播完再进入下一个角色，避免被 stopUnifiedSpeaking 截断。
+  await playback
+}
+
+function splitRoleSegments(msg) {
+  if (msg.role !== 'ai' || !isFirstVisit.value) return [msg.content]
+  const pieces = String(msg.content || '').split(/(?=【[^】]{1,12}】)/).map((item) => item.trim()).filter(Boolean)
+  return pieces.length > 1 && pieces.every((item) => /^【[^】]+】/.test(item)) ? pieces : [msg.content]
 }
 
 function replaySpeech(msg) {
@@ -638,6 +784,18 @@ watch(
   }
 )
 
+watch(coachMode, (enabled) => {
+  stopVoice()
+  if (enabled) {
+    currentSpeakerRole.value = 'coach'
+    currentExpression.value = 'explaining'
+    currentAction.value = 'explain'
+  } else {
+    recomputeSpeaker()
+  }
+  nextTick(() => stageRef.value?.startTalk?.())
+})
+
 function initialStage() {
   const goal = isFirstVisit.value
     ? '选择挂号方式和科室，完成打印报到单与诊间扫码报到'
@@ -665,7 +823,7 @@ function buildFallbackOpening(placeholder) {
       quick_actions: isFirstVisit.value ? [
         { label: '线上预约挂号', value: '我选择线上预约挂号。' },
         { label: '线下现场挂号', value: '我选择到医院线下现场挂号。' },
-        { label: '省人医微信公众号智能问诊', value: '我不确定该挂哪个科，先打开省人医微信公众号使用智能问诊。' }
+        { label: '省人医微信公众号智能分诊', value: '我不确定该挂哪个科，先打开省人医微信公众号使用智能分诊。' }
       ] : []
     }
   }
@@ -678,7 +836,7 @@ async function initSession() {
   try {
     sceneInfo.value = await getSceneDetail(sceneId)
     if (sceneInfo.value.title?.includes('独立看病')) {
-      sceneInfo.value.role = '医院流程角色'
+      sceneInfo.value.role = '就医引导'
     }
     if (isOsce.value) sceneInfo.value.role = '标准化患者'
     if (resumeId) {
@@ -734,6 +892,7 @@ async function resumeExistingSession(resumeId) {
     }
     messages.value = restoredMessages
       .filter((m) => m.extra?.kind !== 'medical_record')
+      .filter((m) => !m.extra?.superseded)
       .filter((m) => m.role !== 'coach' || m.extra?.kind === 'coach_answer')
       .map((m) => ({
         id: m.id,
@@ -743,6 +902,7 @@ async function resumeExistingSession(resumeId) {
         meta: m.extra?.display,
         extra: m.extra
       }))
+    voiceCast.value = messages.value.find((message) => message.role === 'system')?.meta?.voice_cast || {}
     currentStage.value = initialStage()
     for (const m of [...restoredMessages].reverse()) {
       if (m.extra?.stage_info) {
@@ -752,7 +912,7 @@ async function resumeExistingSession(resumeId) {
     }
     // 恢复教练历史抽屉（实时提示；"问教练"的问答已在消息流里展示）
     coachHistory.value = (data.messages || [])
-      .filter((m) => m.role === 'coach' && m.extra?.kind !== 'coach_answer')
+      .filter((m) => m.role === 'coach' && m.extra?.kind !== 'coach_answer' && !m.extra?.superseded)
       .map((m) => ({ id: m.id, type: m.extra?.type || 'info', text: m.content, timestamp: m.timestamp }))
     unreadCoachCount.value = 0
     ElMessage.closeAll?.()
@@ -767,6 +927,7 @@ async function resumeExistingSession(resumeId) {
 
 async function beginSession() {
   setupVisible.value = false
+  if (isFirstVisit.value) visitEntryVisible.value = true
   initializing.value = true
   try {
     if (!backendAvailable.value) throw new Error('演示模式')
@@ -775,6 +936,7 @@ async function beginSession() {
     })
     sessionId.value = response.session_id
     sceneInfo.value = { ...sceneInfo.value, ...response.scene_info }
+    voiceCast.value = response.opening_meta?.voice_cast || {}
     // 异物梗阻场景：记录患者人物设定（阿姨/胖叔…），用于换声音与形象
     if (isChoking.value) {
       chokingCharacter.value = response.opening_meta?.character || extractChokingCharacter(response.opening_message)
@@ -811,18 +973,37 @@ function canUseQuickActions(message) {
   return !hasUserMessage.value && Array.isArray(message.meta?.quick_actions) && message.meta.quick_actions.length
 }
 
-async function onSend(prefilledText = '') {
-  if (loading.value) return
+async function onSend(prefilledText = '', options = {}) {
+  if (voiceInputRef.value?.busy) return
+  const forcedTarget = options.target || ''
+  const sendingToCoach = forcedTarget === 'coach' || (!forcedTarget && coachMode.value && !!sessionId.value)
+  if (sendingToCoach && coachLoading.value) return
   const text = (typeof prefilledText === 'string' && prefilledText ? prefilledText : inputText.value).trim()
   if (!text) return
+  const voiceClips = options.voiceClips || (prefilledText ? [] : (voiceInputRef.value?.takeClips() || []))
 
   // 用户发言：立即打断角色正在说的话，避免“角色还在念、新的对话已开始”的叠音
   stopVoice()
 
-  messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text, timestamp: Date.now() })
+  if (!options.alreadyAdded) {
+    messages.value.push({ id: `user-${Date.now()}`, role: 'user', content: text, timestamp: Date.now(), extra: { voice_assessments: voiceClips.map(c => c.assessment) } })
+  }
   inputText.value = ''
   await scrollToBottom()
-  loading.value = true
+
+  // 主角色仍在生成时记录补充。旧回复返回后不会显示，下一轮会把连续补充合并理解。
+  if (!sendingToCoach && loading.value) {
+    queuedPatientMessages.value.push({ text, voiceClips })
+    ElMessage.info('补充内容已记录，将合并上下文重新回答')
+    return
+  }
+  if (sendingToCoach) {
+    coachLoading.value = true
+    coachReplyPending.value = true
+  } else {
+    loading.value = true
+    replyPending.value = true
+  }
 
   try {
     const firstVisitUserText = messages.value
@@ -832,9 +1013,13 @@ async function onSend(prefilledText = '') {
     const hasCompletedCheckIn = firstVisitUserText.includes('报到单') && firstVisitUserText.includes('报到机')
 
     // 教练问答模式：直接发给观察者教练，不进入患者对话
-    if (coachMode.value && sessionId.value) {
-      const response = await askCoach(sessionId.value, text)
-      appendCharacterMessage({
+    if (sendingToCoach) {
+      const response = await askCoach(sessionId.value, text, voiceClips.map(c => c.receipt))
+      if (response.quota?.exhausted && !quotaWarningShown) {
+        quotaWarningShown = true
+        ElMessageBox.alert(response.quota.message, '今日练习额度', { confirmButtonText: '知道了', type: 'warning' })
+      }
+      await appendCharacterMessage({
         id: response.message_id || `coach-${Date.now()}`,
         role: 'coach',
         content: response.content,
@@ -844,14 +1029,29 @@ async function onSend(prefilledText = '') {
       return
     }
     if (sessionId.value) {
-      const response = await sendMessage({ session_id: sessionId.value, message: text })
-      appendCharacterMessage({
+      const response = await sendMessage({
+        session_id: sessionId.value,
+        message: text,
+        voice_receipts: voiceClips.map(c => c.receipt),
+        supersede_previous_ai: !!options.supersedePreviousAi
+      })
+      if (response.quota?.exhausted && !quotaWarningShown) {
+        quotaWarningShown = true
+        ElMessageBox.alert(response.quota.message, '今日练习额度', { confirmButtonText: '知道了', type: 'warning' })
+      }
+      const hasPendingCorrection = queuedPatientMessages.value.length > 0
+      if (!hasPendingCorrection) await appendCharacterMessage({
         id: response.message_id || `ai-${Date.now()}`,
         role: response.role || 'ai',
         content: response.content,
-        timestamp: response.timestamp || Date.now()
+        timestamp: response.timestamp || Date.now(),
+        extra: {
+          attachments: response.attachments || [],
+          airway_state: response.airway_state,
+          speech_text: response.speech_text || ''
+        }
       })
-      if (response.stage_info) {
+      if (!hasPendingCorrection && response.stage_info) {
         const previousStage = currentStage.value
         currentStage.value = response.stage_info
         if (response.stage_info.transitioned && previousStage && response.stage_info.id > previousStage.id) {
@@ -862,11 +1062,11 @@ async function onSend(prefilledText = '') {
           confirmFinishTraining()
         }
       }
-      if (response.coach_tip) receiveCoachTip(response.coach_tip)
-      if (response.ui_action?.type === 'describe_action') openActionDialog(response.ui_action)
+      if (!hasPendingCorrection && response.coach_tip) receiveCoachTip(response.coach_tip)
+      if (!hasPendingCorrection && response.ui_action?.type === 'describe_action') openActionDialog(response.ui_action)
     } else {
       await new Promise((resolve) => setTimeout(resolve, 500))
-      appendCharacterMessage({
+      await appendCharacterMessage({
         id: `ai-${Date.now()}`,
         role: 'ai',
         content: isFirstVisit.value
@@ -892,7 +1092,23 @@ async function onSend(prefilledText = '') {
   } catch (error) {
     showTip('error', '消息发送失败，你的输入已保留在对话中，可以稍后重试')
   } finally {
-    loading.value = false
+    if (sendingToCoach) {
+      coachLoading.value = false
+      coachReplyPending.value = false
+    }
+    else {
+      loading.value = false
+      replyPending.value = false
+      const corrections = queuedPatientMessages.value.splice(0)
+      if (corrections.length) {
+        await onSend(corrections.map(c => c.text).join('；补充更正：'), {
+          target: 'patient',
+          alreadyAdded: true,
+          supersedePreviousAi: true,
+          voiceClips: corrections.flatMap(c => c.voiceClips)
+        })
+      }
+    }
     await scrollToBottom()
   }
 }
@@ -931,9 +1147,10 @@ async function submitActionDetails() {
 async function restartCurrentStage() {
   if (!sessionId.value || loading.value) return
   loading.value = true
+  replyPending.value = true
   try {
     const response = await restartChatStage(sessionId.value)
-    appendCharacterMessage({
+    await appendCharacterMessage({
       id: response.id,
       role: response.role || 'system',
       content: response.content,
@@ -953,28 +1170,33 @@ async function restartCurrentStage() {
     showTip('error', '阶段重置失败，请稍后重试')
   } finally {
     loading.value = false
+    replyPending.value = false
   }
 }
 
-function recordBodyLength() {
-  return medicalRecordDraft.value
-    .replace(/(主诉|现病史|其他病史[^：]*|体格检查|辅助检查|病历摘要|初步诊断|鉴别诊断)[：:]/g, '')
-    .replace(/\s/g, '')
-    .length
+function hasMeaningfulRecordContent() {
+  const headings = ['基本信息', '主诉', '现病史', '其他病史', '体格检查', '辅助检查', '病历摘要', '初步诊断', '鉴别诊断']
+  const escaped = headings.map((heading) => heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  const sectionPattern = new RegExp(`(?:^|\\n)\\s*(?:${escaped})(?:[^：:\\n]*)[：:]`, 'g')
+  const matches = [...medicalRecordDraft.value.matchAll(sectionPattern)]
+  return matches.some((match, index) => {
+    const start = (match.index || 0) + match[0].length
+    const end = index + 1 < matches.length ? matches[index + 1].index : medicalRecordDraft.value.length
+    return medicalRecordDraft.value.slice(start, end).replace(/\s/g, '').length >= 2
+  })
 }
 
 async function saveRecord() {
   if (recordSaving.value) return
-  if (recordBodyLength() < 30) {
-    showTip('warning', '请先根据问诊内容填写病历，不能只保留标题')
+  if (!hasMeaningfulRecordContent()) {
+    showTip('warning', '请至少在一个病历栏目中填写有效内容')
     return
   }
   recordSaving.value = true
   try {
     const content = medicalRecordDraft.value.trim()
     if (sessionId.value && backendAvailable.value) {
-      const response = await saveMedicalRecord(sessionId.value, content)
-      if (response.stage_info) currentStage.value = response.stage_info
+      await saveMedicalRecord(sessionId.value, content)
     }
     lastSavedRecord.value = content
     showTip('success', '病历已保存，并将作为独立评分项目')
@@ -992,6 +1214,7 @@ async function focusRecordWorkspace() {
 }
 
 async function onEnd(skipConfirm = false) {
+  if (voiceInputRef.value?.busy) { ElMessage.info('请先停止录音并等待识别完成'); return }
   if (isOsce.value && !medicalRecordSaved.value) {
     await focusRecordWorkspace()
     showTip('warning', '请先完成并保存病历记录，再结束训练')
@@ -1043,9 +1266,9 @@ function onTimePressureToggle(value) {
   }
 }
 
-// 后端阈值：75s 开始恶化，135s 昏倒。用 elapsed 换算成 0→1 的连续压迫强度，
+// 后端阈值：约 150-180s 昏倒（较原逻辑延长 30s）。用 elapsed 换算连续压迫强度，
 // 驱动机器人眼睛「蓝→黄→红」与头部屏幕「黑→红」渐变。
-const COLLAPSE_AFTER = 135
+const DEFAULT_COLLAPSE_AFTER = 165
 
 function applyPressure(res) {
   // 会话结束 / 非梗阻场景 / 患者已获救 → 解除压迫，机器人恢复常态
@@ -1059,7 +1282,8 @@ function applyPressure(res) {
     return
   }
   const elapsed = Number(res?.elapsed) || 0
-  pressureLevel.value = Math.min(1, elapsed / COLLAPSE_AFTER)
+  const collapseAfter = Number(res?.collapse_after) || DEFAULT_COLLAPSE_AFTER
+  pressureLevel.value = Math.min(1, elapsed / collapseAfter)
 }
 
 function startPressurePolling() {
@@ -1088,7 +1312,7 @@ async function checkTimePressure() {
     if (res.message && res.message_id) {
       const exists = messages.value.some((message) => message.id === res.message_id)
       if (!exists) {
-        appendCharacterMessage({
+        await appendCharacterMessage({
           id: res.message_id,
           role: 'ai',
           content: res.message,
@@ -1148,8 +1372,6 @@ async function scrollToBottom() {
 }
 
 onMounted(initSession)
-// 预热 meSpeak.js（后台静默加载，不抢首屏资源，2秒后执行）
-onMounted(preheatMeSpeak)
 
 // ---------- 离开训练保护 ----------
 // 站内导航（训练历史/个人中心/场景列表等）离开前确认，防止误触
@@ -1189,6 +1411,40 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 @use '@/assets/styles/variables.scss' as *;
+.visit-entry-content { color: #294c5b; }
+.visit-entry-dialog { max-height: 90dvh; overflow-y: auto; border-radius: 20px; }
+.visit-situation { padding: 22px 24px; border: 1px solid #d4e8e4; border-radius: 18px; background: linear-gradient(120deg, #edf8f4, #f8fbff); }
+.visit-eyebrow { color: #418575; font-size: 11px; letter-spacing: .08em; }
+.visit-situation h2 { font-size: 21px; margin: 8px 0 12px; color: #203f4a; }
+.visit-situation p { margin: 0; line-height: 1.8; white-space: pre-line; overflow-wrap: anywhere; font-size: 14px; }
+.visit-options-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 22px 0 12px; }
+.visit-options-heading h3 { margin: 0; font-size: 17px; }
+.visit-options-heading > span { color: #7c929b; font-size: 11px; }
+.visit-entry-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.visit-entry-card { position: relative; padding: 0; overflow: hidden; border: 1px solid #dce8e8; border-radius: 16px; text-align: left; color: inherit; background: #fff; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+.visit-entry-card:hover, .visit-entry-card:focus-visible { border-color: #369b88; box-shadow: 0 8px 22px #285e5218; outline: 2px solid #69b9a9; outline-offset: 2px; }
+.visit-entry-card:disabled { opacity: .55; cursor: wait; }
+.visit-entry-card img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: contain; background: #f1f8f5; }
+.visit-entry-copy { display: flex; flex-direction: column; gap: 6px; padding: 15px 30px 18px 16px; }
+.visit-entry-copy strong { font-size: 16px; }
+.visit-entry-copy > span { font-size: 12px; color: #70878d; line-height: 1.5; }
+.visit-entry-arrow { position: absolute; bottom: 29px; right: 14px; color: #388b7b; }
+.visit-entry-note { margin: 13px 0 0; color: #7e9399; font-size: 11px; line-height: 1.6; }
+.visit-entry-reopen { margin-top: 14px; }
+@media (max-width: 980px) {
+  .visit-situation { padding: 15px; border-radius: 14px; }
+  .visit-situation h2 { font-size: 18px; margin: 6px 0 8px; }
+  .visit-situation p { font-size: 13px; max-height: 27dvh; overflow-y: auto; }
+  .visit-options-heading { margin: 16px 0 10px; flex-wrap: wrap; gap: 3px; }
+  .visit-options-heading h3 { font-size: 15px; }
+  .visit-entry-options { grid-template-columns: 1fr; gap: 9px; }
+  .visit-entry-card { display: grid; grid-template-columns: 100px minmax(0, 1fr) 22px; align-items: center; border-radius: 13px; }
+  .visit-entry-card img { width: 100px; height: auto; }
+  .visit-entry-copy { padding: 10px 8px 10px 12px; gap: 4px; }
+  .visit-entry-copy strong { font-size: 15px; }
+  .visit-entry-copy > span { font-size: 11px; }
+  .visit-entry-arrow { position: static; }
+}
 
 .chat-view {
   min-height: 100vh;
@@ -1280,7 +1536,8 @@ onBeforeUnmount(() => {
   p { margin: 0; color: $text-secondary; font-size: 13px; }
 }
 
-.chat-actions { display: flex; align-items: center; gap: 10px; }
+.chat-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.chat-actions > .el-button { margin-left: 0; border-radius: 11px; }
 .chat-actions :deep(.toggle-item) { color: #7f93a3; margin-right: 2px; }
 .chat-actions :deep(.toggle-item.is-active) { color: #2c7be5; font-weight: 700; }
 .coach-button { gap: 6px; }
@@ -1352,6 +1609,29 @@ onBeforeUnmount(() => {
   button:hover:not(:disabled) { transform: translateY(-1px); border-color: #187c7c; box-shadow: 0 5px 14px rgba(24, 124, 124, 0.12); }
   button:disabled { opacity: 0.55; cursor: not-allowed; }
 }
+.scene-resources { margin-top: 13px; color: #527087; font-size: 12px; }
+.scene-resources summary { cursor: pointer; font-weight: 700; }
+.scene-resources a { display: inline-block; margin: 8px 12px 0 0; color: #176a9c; text-decoration: none; }
+.scene-resources a:hover { text-decoration: underline; }
+
+.message-attachments { width: min(420px, 100%); margin-top: 8px; display: grid; gap: 7px; }
+.message-attachments a {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid #cfe2ef;
+  border-radius: 11px;
+  background: #f7fbff;
+  color: #2a5875;
+  text-decoration: none;
+}
+.message-attachments a:hover { border-color: #8fc0e0; background: #f0f8ff; }
+.attachment-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; color: #fff; background: linear-gradient(145deg, #2c7be5, #37a4bf); }
+.message-attachments a > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; }
+.message-attachments strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.message-attachments small { margin-top: 2px; color: #8297a6; font-size: 10px; }
 
 .message-wrapper { display: flex; gap: 10px; margin-bottom: 22px; }
 .message-wrapper.is-user { flex-direction: row-reverse; }
@@ -1431,6 +1711,7 @@ onBeforeUnmount(() => {
 .drawer-intro { display: flex; gap: 12px; margin-bottom: 20px; padding: 14px; border-radius: 12px; color: #506779; background: #f4f7f9; line-height: 1.6; }
 .drawer-intro .el-icon { flex: none; margin-top: 3px; color: #2c7be5; }
 .drawer-intro p { margin: 0; }
+.mobile-session-controls { display: none; }
 .record-workspace {
   flex: 0 0 390px;
   min-width: 0;
@@ -1471,18 +1752,20 @@ onBeforeUnmount(() => {
 .record-intro p { margin: 4px 0 0; font-size: 13px; line-height: 1.65; }
 .record-framework { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
 .record-framework span { padding: 4px 9px; border: 1px solid #d6e5ef; border-radius: 999px; color: #527087; background: #fff; font-size: 12px; }
-.record-editor { flex: 1; min-height: 0; }
+.record-editor { flex: 0 0 auto; min-height: 0; overflow: visible; }
 .record-editor :deep(.el-textarea) { height: 100%; display: flex; flex-direction: column; }
 .record-editor :deep(.el-textarea__inner) {
   flex: 1;
-  min-height: 360px !important;
+  height: clamp(180px, 36dvh, 420px);
+  min-height: 140px;
+  max-height: 65dvh;
   padding: 14px;
   border-color: #cfdde8;
   color: #2f4658;
   line-height: 1.7;
-  resize: none;
+  resize: vertical;
 }
-.record-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
+.record-actions { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; padding-bottom: 2px; }
 .record-actions span { font-size: 12px; }
 .record-actions .saved { color: #269368; }
 .record-actions .unsaved { color: #c07813; }
@@ -1511,7 +1794,7 @@ onBeforeUnmount(() => {
   .record-intro p { font-size: 12px; }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 980px) {
   .chat-container {
     width: 100%;
     height: calc(100dvh - 58px);
@@ -1531,32 +1814,38 @@ onBeforeUnmount(() => {
   }
   .chat-container.is-osce-layout .chat-main {
     width: 100%;
-    height: calc(100dvh - 190px);
-    min-height: 560px;
+    height: clamp(430px, 72dvh, 720px);
+    min-height: 0;
     flex: none;
   }
   .record-workspace {
     width: 100%;
-    min-height: 690px;
+    min-height: 0;
     flex: none;
     padding: 18px 12px 30px;
     border-top: 1px solid #dfe8f0;
     border-left: 0;
     overflow: visible;
+    scroll-margin-top: 58px;
   }
-  .record-editor :deep(.el-textarea__inner) { min-height: 460px !important; resize: vertical; }
+  .record-editor { overflow: visible; }
+  .record-editor :deep(.el-textarea__inner) { height: clamp(180px, 35dvh, 360px); min-height: 140px; resize: vertical; }
+  .record-actions { flex-wrap: wrap; }
+  .record-actions .el-button { margin-left: auto; }
   .chat-header { padding: 13px 14px; }
   .scene-icon { display: none; }
   .scene-copy .eyebrow, .scene-copy p { display: none; }
   .scene-copy h1 { font-size: 17px; }
   .coach-button span { display: none; }
-  .chat-actions > .toggle-item { font-size: 0; gap: 0; margin: 0; }
+  .chat-actions > .toggle-item { font-size: 11px; gap: 4px; margin: 0; white-space: nowrap; }
   .chat-actions > .el-button { padding-inline: 9px; }
   .chat-actions { gap: 6px; }
   .stage-strip { padding: 9px 14px; }
   .stage-main .stage-progress { display: none; }
   .stage-dots span { width: 13px; }
   .chat-messages { padding: 16px 12px; }
+  .chat-container.is-osce-layout .chat-messages { padding-top: 12px; padding-bottom: 10px; }
+  .chat-container.is-osce-layout .scene-brief { margin-bottom: 14px; }
   .scene-brief { padding: 17px; }
   .brief-heading > .el-tag { display: none; }
   .message-content { max-width: 82%; }
@@ -1564,5 +1853,36 @@ onBeforeUnmount(() => {
   .chat-input { padding: 10px 12px 12px; }
   .input-help span:last-child { display: none; }
   .input-row .el-button { padding-inline: 14px; }
+
+  .mobile-session-controls { display: block; width: 100%; min-width: 0; }
+  .mobile-session-controls .chat-header {
+    display: flex; flex-direction: column; align-items: stretch;
+    gap: 8px; padding: 0; border: 0; background: transparent;
+  }
+  .mobile-session-controls .scene-info { min-width: 0; gap: 0; }
+  .mobile-session-controls .scene-copy h1 { font-size: 15px; line-height: 1.4; letter-spacing: .01em; margin: 0; overflow-wrap: anywhere; }
+  .mobile-session-controls .chat-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; width: 100%; margin-left: 0; }
+  .mobile-session-controls .chat-actions .el-button { height: 36px; min-width: 36px; margin: 0; padding: 0 9px; font-size: 12px; border-radius: 9px; }
+  .mobile-session-controls .chat-actions .toggle-item { color: #56798c; font-size: 11px; gap: 3px; min-height: 36px; }
+  .mobile-session-controls .stage-strip { padding: 7px 0 0; margin-top: 6px; border: 0; border-top: 1px solid #dfebef; background: transparent; flex-wrap: wrap; gap: 5px; }
+  .mobile-session-controls .stage-main { gap: 6px; font-size: 11px; flex-wrap: wrap; }
+  .mobile-session-controls .stage-main strong { font-size: 12px; }
+  .mobile-session-controls .stage-dots { gap: 3px; }
+  .mobile-session-controls .stage-dots span { width: 9px; height: 3px; }
+  .mobile-session-controls .coach-button span { display: inline; }
+  .mobile-session-controls .stage-strip { color: #668693; }
+  .mobile-session-controls .stage-main strong { color: #315d70; }
+  .chat-messages { overscroll-behavior-y: contain; }
+  .message-content { min-width: 0; max-width: calc(100% - 42px); }
+  .message-bubble { overflow-wrap: anywhere; font-size: 14px; }
+  .chat-input { flex-shrink: 0; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .chat-input :deep(.el-textarea__inner), .record-editor :deep(.el-textarea__inner) { font-size: 16px; }
+  .record-workspace { border-radius: 18px 18px 0 0; padding-top: 14px; }
+  .record-intro { padding: 10px; margin-bottom: 10px; font-size: 12px; }
+  .record-intro p { font-size: 12px; }
+  .record-framework { gap: 5px; margin-bottom: 10px; }
+  .record-framework span { font-size: 11px; padding: 4px 7px; }
+  .record-actions { padding: 10px 0 max(4px, env(safe-area-inset-bottom)); margin-top: 0; }
+  .chat-container.is-osce-layout { width: 100%; }
 }
 </style>

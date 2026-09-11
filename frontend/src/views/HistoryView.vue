@@ -9,8 +9,21 @@
           <h1>训练历史</h1>
           <p>回顾历次训练的成绩，看看自己进步了多少</p>
         </div>
-        <el-button type="primary" @click="router.push('/')"><el-icon><Plus /></el-icon>开始新训练</el-button>
+        <div class="heading-actions">
+          <el-button plain @click="openSummary">成长总结</el-button>
+          <el-button type="primary" @click="router.push('/')"><el-icon><Plus /></el-icon>开始新训练</el-button>
+        </div>
       </header>
+
+      <section v-if="records.length" class="history-filters" aria-label="训练历史筛选排序">
+        <el-select v-model="sceneFilter" placeholder="全部场景" clearable><el-option v-for="name in sceneOptions" :key="name" :label="name" :value="name" /></el-select>
+        <el-select v-model="statusFilter" placeholder="全部状态" clearable>
+          <el-option label="已完成" value="completed" /><el-option label="未评分" value="unrated" /><el-option label="进行中" value="running" />
+        </el-select>
+        <el-select v-model="sortBy" aria-label="排序方式">
+          <el-option label="置顶优先 · 最新" value="pinned" /><el-option label="用时从短到长" value="duration_asc" /><el-option label="用时从长到短" value="duration_desc" /><el-option label="成绩从高到低" value="score_desc" />
+        </el-select>
+      </section>
 
       <el-empty
         v-if="!loading && !loadError && !records.length"
@@ -30,10 +43,9 @@
 
       <el-table
         v-else
-        :data="records"
+        :data="displayedRecords"
         v-loading="loading"
         class="history-table"
-        :default-sort="{ prop: 'started_at', order: 'descending' }"
       >
         <el-table-column label="训练场景" min-width="150">
           <template #default="{ row }">
@@ -90,9 +102,11 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="220" align="center">
+        <el-table-column label="操作" width="300" align="center" fixed="right">
           <template #default="{ row }">
             <div class="record-actions">
+              <el-button size="small" text @click="toggleFlag(row, 'is_favorite')">{{ row.is_favorite ? '★ 已收藏' : '☆ 收藏' }}</el-button>
+              <el-button size="small" text @click="toggleFlag(row, 'is_pinned')">{{ row.is_pinned ? '取消置顶' : '置顶' }}</el-button>
               <el-button
                 v-if="row.total_score != null || row.ended_at"
                 type="primary"
@@ -126,7 +140,7 @@
       </el-table>
 
       <section v-if="!loading && !loadError && records.length" class="history-cards" aria-label="训练历史记录">
-        <article v-for="row in records" :key="row.session_id" class="history-card">
+        <article v-for="row in displayedRecords" :key="row.session_id" class="history-card" :class="{ pinned: row.is_pinned }">
           <div class="mobile-card-heading">
             <div class="scene-cell">
               <span class="scene-dot" :class="sceneKind(row)" />
@@ -150,6 +164,8 @@
           </div>
 
           <div class="mobile-actions">
+            <el-button size="small" plain @click="toggleFlag(row, 'is_favorite')">{{ row.is_favorite ? '★' : '☆' }}</el-button>
+            <el-button size="small" plain @click="toggleFlag(row, 'is_pinned')">{{ row.is_pinned ? '取消置顶' : '置顶' }}</el-button>
             <el-button
               v-if="row.total_score != null || row.ended_at"
               type="primary"
@@ -175,21 +191,51 @@
         </article>
       </section>
     </main>
+
+    <el-dialog v-model="summaryVisible" title="训练成长总结" width="min(660px, 94vw)">
+      <div v-loading="summaryLoading" class="summary-report">
+        <h3>{{ trainingSummary?.headline }}</h3>
+        <section><strong>值得肯定</strong><p v-for="item in trainingSummary?.highlights || []" :key="item">✓ {{ item }}</p></section>
+        <section><strong>下一步可以更好</strong><p v-for="item in trainingSummary?.opportunities || []" :key="item">→ {{ item }}</p></section>
+        <div class="scene-summary" v-for="item in trainingSummary?.scenes || []" :key="item.scene"><span>{{ item.scene }} · {{ item.count }}次</span><b>{{ item.average }}分</b></div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppHeader from '@/components/AppHeader.vue'
-import { deleteChatSession, getChatHistory } from '@/api/chat'
+import { deleteChatSession, getChatHistory, getTrainingSummary, updateChatSessionFlags } from '@/api/chat'
 
 const router = useRouter()
 const records = ref([])
 const loading = ref(true)
 const loadError = ref('')
 const deletingSessionId = ref(null)
+const sceneFilter = ref('')
+const statusFilter = ref('')
+const sortBy = ref('pinned')
+const summaryVisible = ref(false)
+const summaryLoading = ref(false)
+const trainingSummary = ref(null)
+
+const sceneOptions = computed(() => [...new Set(records.value.map((row) => row.scene_title))])
+const displayedRecords = computed(() => {
+  const filtered = records.value.filter((row) => {
+    if (sceneFilter.value && row.scene_title !== sceneFilter.value) return false
+    const state = row.total_score != null ? 'completed' : row.ended_at ? 'unrated' : 'running'
+    return !statusFilter.value || state === statusFilter.value
+  })
+  return [...filtered].sort((a, b) => {
+    if (sortBy.value === 'duration_asc') return (a.duration ?? Infinity) - (b.duration ?? Infinity)
+    if (sortBy.value === 'duration_desc') return (b.duration ?? -1) - (a.duration ?? -1)
+    if (sortBy.value === 'score_desc') return (b.total_score ?? -1) - (a.total_score ?? -1)
+    return Number(b.is_pinned) - Number(a.is_pinned) || b.started_at - a.started_at
+  })
+})
 
 onMounted(async () => {
   try {
@@ -223,6 +269,22 @@ function scoreClass(score) {
   if (score >= 85) return 'score-high'
   if (score >= 60) return 'score-mid'
   return 'score-low'
+}
+
+async function toggleFlag(row, key) {
+  const value = !row[key]
+  await updateChatSessionFlags(row.session_id, { [key]: value })
+  row[key] = value
+}
+
+async function openSummary() {
+  summaryVisible.value = true
+  summaryLoading.value = true
+  try {
+    trainingSummary.value = await getTrainingSummary()
+  } finally {
+    summaryLoading.value = false
+  }
 }
 
 async function deleteRecord(row) {
@@ -270,7 +332,7 @@ function formatDuration(seconds) {
 
 <style scoped lang="scss">
 .history-view { min-height: 100vh; background: linear-gradient(180deg, #f4f7fa, #eef2f6); }
-.history-container { max-width: 1080px; margin: 0 auto; padding: 36px 24px 60px; min-height: 600px; }
+.history-container { max-width: 1440px; margin: 0 auto; padding: 36px 24px 60px; min-height: 600px; }
 .load-alert { margin-bottom: 20px; }
 
 .history-heading {
@@ -282,10 +344,20 @@ function formatDuration(seconds) {
   h1 { margin: 4px 0; color: #172d3c; font-size: 32px; }
   p { margin: 0; color: #6c8190; }
 }
+.heading-actions { display: flex; gap: 8px; }
+.heading-actions :deep(.el-button) { margin: 0; }
+.heading-actions :deep(.el-button > span) { display: inline-flex; align-items: center; gap: 8px; }
+.history-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 220px)); gap: 10px; margin-bottom: 16px; }
+.summary-report h3 { margin: 0 0 18px; color: #24485f; line-height: 1.65; }
+.summary-report section { margin: 14px 0; padding: 14px 16px; border-radius: 12px; background: #f5f9fc; }
+.summary-report section strong { color: #285a76; }
+.summary-report section p { margin: 8px 0 0; color: #506979; line-height: 1.6; }
+.scene-summary { display: flex; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid #e7edf1; color: #597182; }
+.history-card.pinned { border-color: #e4b85d; box-shadow: 0 7px 20px rgba(190, 137, 35, 0.1); }
 
 .history-table { border: 1px solid #dfe6eb; border-radius: 16px; overflow: hidden; }
 .history-cards { display: none; }
-.record-actions { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.record-actions { display: flex; align-items: center; justify-content: center; gap: 4px; }
 .record-actions .el-button + .el-button { margin-left: 0; }
 .scene-cell { display: flex; align-items: center; gap: 8px; color: #2f4c5e; font-weight: 600; }
 .scene-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
@@ -307,7 +379,9 @@ function formatDuration(seconds) {
   .history-heading { align-items: center; gap: 12px; }
   .history-heading h1 { font-size: 26px; }
   .history-heading p { display: none; }
-  .history-heading :deep(.el-button) { min-height: 38px; margin-bottom: 2px; padding-inline: 12px; }
+  .history-heading :deep(.el-button) { width: 100%; min-height: 40px; margin: 0; padding-inline: 12px; }
+  .heading-actions { flex: 0 0 136px; flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+  .history-filters { grid-template-columns: 1fr; }
   .history-table { display: none; }
   .history-cards { display: grid; gap: 12px; }
   .history-card { padding: 15px; border: 1px solid #dfe6eb; border-radius: 14px; background: #fff; box-shadow: 0 7px 20px rgba(40, 61, 75, 0.05); }
@@ -319,7 +393,8 @@ function formatDuration(seconds) {
   .mobile-facts dt { margin-bottom: 4px; color: #8294a1; font-size: 10px; }
   .mobile-facts dd { margin: 0; color: #334f60; font-size: 12px; overflow-wrap: anywhere; }
   .mobile-dim-bars { margin-top: 13px; padding-top: 12px; border-top: 1px solid #edf1f4; }
-  .mobile-actions { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 8px; margin-top: 14px; }
+  .mobile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .mobile-actions :deep(.el-button) { width: 100%; min-height: 38px; margin: 0; }
+  .mobile-actions :deep(.el-button:nth-child(-n+2)) { width: auto; flex: 1; }
 }
 </style>

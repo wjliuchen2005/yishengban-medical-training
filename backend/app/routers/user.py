@@ -20,6 +20,7 @@ from app.models import User
 from app.database import get_db
 from app.auth import verify_password, hash_password
 from app.routers.auth import get_current_user
+from app.usage import quota_status
 
 router = APIRouter(prefix="/api/user", tags=["用户"])
 
@@ -37,6 +38,14 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 async def get_profile(current_user: User = Depends(get_current_user)):
     """获取当前用户信息"""
     return current_user
+
+
+@router.get("/quota")
+async def get_daily_quota(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return quota_status(db, current_user)
 
 
 # =====================================================

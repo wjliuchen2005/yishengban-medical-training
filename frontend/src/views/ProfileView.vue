@@ -38,7 +38,7 @@
           </div>
           <div class="info-item">
             <span class="label">学校</span>
-            <span class="value">{{ user?.school || '未填写' }}</span>
+            <span class="value">{{ user?.school || '南京医科大学' }}</span>
           </div>
           <div class="info-item">
             <span class="label">邮箱</span>
@@ -136,7 +136,7 @@ const profileForm = reactive({})
 function startEditProfile() {
   profileForm.real_name = user.value?.real_name || ''
   profileForm.student_id = user.value?.student_id || ''
-  profileForm.school = user.value?.school || ''
+  profileForm.school = user.value?.school || '南京医科大学'
   profileForm.email = user.value?.email || ''
   profileForm.phone = user.value?.phone || ''
   editingProfile.value = true

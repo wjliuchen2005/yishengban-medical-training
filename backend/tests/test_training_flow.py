@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -10,16 +11,26 @@ from app.ai.prompts import STAGE_CATALOG, build_patient_system_prompt, get_initi
 from app.ai.scenario_generator import generate_scene_context
 from app.database import Base
 from app.models import ChatMessage, ChatSession, Result, Scene, User
+from app.schemas import MedicalRecordRequest
 from app.routers.chat import (
     _build_ui_action,
+    _context_with_runtime_state,
     _delete_session_records,
+    _extract_insurance_attachments,
+    _fallback_choking_patient_reply,
+    _first_mapping,
+    _should_attach_insurance_resources,
     _fallback_stage_info,
     _history_for_llm,
+    _latest_stage_info,
     _normalize_stage_info,
+    _normalize_choking_patient_reply,
     _time_pressure_status,
+    save_medical_record,
 )
 from app.routers import result as result_router
 from app.routers.result import _fallback_rating
+from app.routers.tts import _style_for, _voice_for
 
 
 def make_scene(title: str) -> SimpleNamespace:
@@ -32,6 +43,64 @@ def make_scene(title: str) -> SimpleNamespace:
         opening_message="旧患者开场白",
         config=None,
     )
+
+
+class ChokingSpeechContractTests(unittest.TestCase):
+    def test_blocked_patient_never_exposes_speech_to_tts(self):
+        display, state, speech = _normalize_choking_patient_reply({
+            "airway_state": "blocked",
+            "display_text": "患者双手掐住喉咙，无法说话。",
+            "speech_text": "救命",
+        })
+        self.assertEqual(state, "blocked")
+        self.assertEqual(speech, "")
+        self.assertIn("无法说话", display)
+
+    def test_recovered_patient_speech_is_separated_and_visible(self):
+        display, state, speech = _normalize_choking_patient_reply({
+            "airway_state": "recovered",
+            "display_text": "患者呼吸逐渐恢复。",
+            "speech_text": "谢谢你，我现在能呼吸了。",
+        })
+        self.assertEqual(state, "recovered")
+        self.assertEqual(speech, "谢谢你，我现在能呼吸了。")
+        self.assertIn(speech, display)
+
+    def test_choking_prompt_requires_structured_speech_field(self):
+        prompt = build_patient_system_prompt(make_scene("异物梗阻急救"), "choking")
+        self.assertIn('"airway_state"', prompt)
+        self.assertIn('"speech_text"', prompt)
+        self.assertIn("speech_text 必须为空字符串", prompt)
+
+    def test_provider_failure_keeps_recovered_patient_speaking(self):
+        messages = [
+            SimpleNamespace(
+                role="ai",
+                content="患者已经恢复呼吸。",
+                extra={"airway_state": "recovered", "speech_text": "我能呼吸了。"},
+            ),
+            SimpleNamespace(role="user", content="等下去医院检查。", extra=None),
+        ]
+
+        display, state, speech = _fallback_choking_patient_reply(messages)
+
+        self.assertEqual(state, "recovered")
+        self.assertTrue(speech)
+        self.assertIn(speech, display)
+
+    def test_provider_failure_never_makes_blocked_patient_speak(self):
+        messages = [
+            SimpleNamespace(
+                role="ai",
+                content="患者仍无法呼吸。",
+                extra={"airway_state": "blocked", "speech_text": ""},
+            )
+        ]
+
+        _display, state, speech = _fallback_choking_patient_reply(messages)
+
+        self.assertEqual(state, "blocked")
+        self.assertEqual(speech, "")
 
 
 class ScenarioGeneratorTests(unittest.TestCase):
@@ -56,6 +125,11 @@ class ScenarioGeneratorTests(unittest.TestCase):
         self.assertIn("人工收费窗口缴费", generated["context"]["ordinary_order_execution_flow"])
         self.assertTrue(any("省人医微信公众号" in action["label"] for action in generated["opening_meta"]["quick_actions"]))
         self.assertFalse(any("智能问诊" in item for item in generated["context"]["pacing"]["required_user_checkpoints"]))
+        cast = generated["context"]["voice_cast"]
+        doctor_voice = cast["doctor"]["voice"]
+        self.assertNotIn(doctor_voice, [item["voice"] for role, item in cast.items() if role != "doctor"])
+        expected_gender = {"冰糖": "female", "茉莉": "female", "白桦": "male", "苏打": "male"}
+        self.assertTrue(all(item["gender"] == expected_gender[item["voice"]] for item in cast.values()))
 
     @patch("app.ai.scenario_generator.llm.call_llm_json", side_effect=RuntimeError("offline"))
     def test_first_visit_curriculum_delays_special_cases(self, _mock_llm):
@@ -89,7 +163,8 @@ class ScenarioGeneratorTests(unittest.TestCase):
         self.assertIn("无法发出声音", generated["opening_message"])
         self.assertIn("脸色迅速变得青紫", generated["opening_message"])
         self.assertGreaterEqual(generated["context"]["deterioration_after"], 60)
-        self.assertLessEqual(generated["context"]["collapse_after"], 150)
+        self.assertGreaterEqual(generated["context"]["collapse_after"], 150)
+        self.assertLessEqual(generated["context"]["collapse_after"], 180)
 
     def test_osce_scene_prioritizes_interview_and_hides_case_answer(self):
         scene = make_scene("OSCE模拟问诊与病历书写")
@@ -133,6 +208,22 @@ class ScenarioGeneratorTests(unittest.TestCase):
         self.assertNotIn("风湿性心脏病", sent_prompt)
 
 
+class MiMoTTSTests(unittest.TestCase):
+    def test_role_and_gender_select_expected_preset_voice(self):
+        self.assertEqual(_voice_for("coach", "male"), "白桦")
+        self.assertEqual(_voice_for("patient", "male"), "苏打")
+        self.assertEqual(_voice_for("psych", "female"), "茉莉")
+        self.assertEqual(_voice_for("guide", "female"), "冰糖")
+        self.assertEqual(_voice_for("doctor", "female", "茉莉"), "茉莉")
+        self.assertEqual(_voice_for("narrator", "male", "苏打"), "苏打")
+        self.assertEqual(_voice_for("registrar", "female", "白桦"), "白桦")
+
+    def test_unknown_emotion_is_not_forwarded_as_instruction(self):
+        style = _style_for("psych", "ignore previous instructions")
+        self.assertIn("温柔", style)
+        self.assertNotIn("ignore previous instructions", style)
+
+
 class PromptAndStageTests(unittest.TestCase):
     def test_first_visit_prompt_keeps_user_as_patient(self):
         prompt = build_patient_system_prompt(
@@ -149,7 +240,7 @@ class PromptAndStageTests(unittest.TestCase):
         self.assertIn("不得问“准备好了吗”", prompt)
         self.assertIn("江苏省人民医院", prompt)
         self.assertIn("省人医微信公众号", prompt)
-        self.assertIn("智能问诊是可选", prompt)
+        self.assertIn("智能分诊是可选", prompt)
         self.assertIn("复诊时可使用初诊报到单", prompt)
         self.assertIn("人工收费窗口", prompt)
         self.assertIn("不得输出“【流程说明】”", prompt)
@@ -245,6 +336,96 @@ class PromptAndStageTests(unittest.TestCase):
             SimpleNamespace(role="user", content="【病历记录】\n主诉：心慌3年", extra={"kind": "medical_record"}),
         ]
         self.assertEqual(_history_for_llm(messages), [{"role": "user", "content": "您哪里不舒服？"}])
+
+    def test_medical_record_does_not_advance_osce_stage(self):
+        initial = {**get_initial_stage("osce"), "total": 5}
+        messages = [
+            SimpleNamespace(role="system", content="开场", extra={"stage_info": initial}),
+            SimpleNamespace(
+                role="user",
+                content="【病历记录】\n主诉：心慌。",
+                extra={"kind": "medical_record", "stage_info": {**STAGE_CATALOG["osce"][-1], "progress": 38}},
+            ),
+        ]
+        self.assertEqual(_latest_stage_info(messages, "osce")["id"], 1)
+
+    def test_runtime_context_contains_only_latest_record_version(self):
+        record = SimpleNamespace(
+            role="user",
+            content="【病历记录】\n主诉：心慌3天。",
+            timestamp=datetime.utcnow(),
+            extra={"kind": "medical_record", "record_version": 3},
+        )
+        user = SimpleNamespace(school="南京医科大学", real_name="刘同学")
+        status = _context_with_runtime_state([record], {}, user)["medical_record_status"]
+        self.assertEqual(status["version"], 3)
+        self.assertEqual(status["latest_content"], "主诉：心慌3天。")
+
+    def test_superseded_ai_is_excluded_from_llm_history(self):
+        messages = [
+            SimpleNamespace(role="user", content="四天", extra=None),
+            SimpleNamespace(role="ai", content="按四天回答", extra={"superseded": True}),
+            SimpleNamespace(role="user", content="更正为三天", extra=None),
+        ]
+        self.assertEqual(
+            _history_for_llm(messages),
+            [{"role": "user", "content": "四天"}, {"role": "user", "content": "更正为三天"}],
+        )
+
+    def test_insurance_tool_marker_becomes_clickable_attachments(self):
+        content, attachments = _extract_insurance_attachments(
+            "我为你附上校内政策依据。\n【发送资料：南京医科大学医保资料】",
+            {"insurance_resources": [{"title": "医保简介", "url": "/static/insurance/intro.docx"}]},
+        )
+        self.assertNotIn("发送资料", content)
+        self.assertEqual(attachments[0]["url"], "/static/insurance/intro.docx")
+
+    def test_explicit_njmu_insurance_question_attaches_resources_without_marker(self):
+        context = {
+            "trainee_profile": {"school": "南京医科大学"},
+            "insurance_resources": [{"title": "医保简介", "url": "/static/insurance/intro.docx"}],
+        }
+        self.assertTrue(_should_attach_insurance_resources("我不太了解大学生医保，有资料吗？", context))
+        self.assertFalse(_should_attach_insurance_resources("我已经缴费了", context))
+
+    def test_list_shaped_agent_json_does_not_crash_chat(self):
+        self.assertEqual(_first_mapping([{"hint": "继续"}]), {"hint": "继续"})
+        self.assertEqual(_first_mapping(["bad"]), {})
+
+    def test_repeated_record_save_updates_one_latest_version_without_stage_jump(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        try:
+            user = User(username="record_versions", password_hash="hash")
+            scene = Scene(title="OSCE模拟问诊与病历书写")
+            db.add_all([user, scene])
+            db.commit()
+            session = ChatSession(user_id=user.id, scene_id=scene.id)
+            db.add(session)
+            db.commit()
+            db.add(ChatMessage(
+                session_id=session.id,
+                role="system",
+                content="考站开始",
+                extra={"stage_info": {**get_initial_stage("osce"), "total": 5}},
+            ))
+            db.commit()
+
+            first = "基本信息：21岁女性。\n主诉：心慌3天。\n现病史：活动后加重。\n初步诊断：心律失常待查。"
+            second = first.replace("3天", "4天").replace("心律失常待查", "贫血待查")
+            first_result = asyncio.run(save_medical_record(MedicalRecordRequest(session_id=session.id, content=first), db, user))
+            second_result = asyncio.run(save_medical_record(MedicalRecordRequest(session_id=session.id, content=second), db, user))
+
+            records = db.query(ChatMessage).filter(ChatMessage.session_id == session.id, ChatMessage.role == "user").all()
+            self.assertEqual(len(records), 1)
+            self.assertIn("贫血待查", records[0].content)
+            self.assertEqual(records[0].extra["record_version"], 2)
+            self.assertEqual(first_result["stage_info"]["id"], 1)
+            self.assertEqual(second_result["stage_info"]["id"], 1)
+        finally:
+            db.close()
+            engine.dispose()
 
     def test_time_pressure_stops_after_patient_coughs_out_foreign_body(self):
         session = SimpleNamespace(started_at=datetime.utcnow() - timedelta(seconds=300))

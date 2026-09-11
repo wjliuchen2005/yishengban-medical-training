@@ -166,6 +166,7 @@
                 <el-tag v-else-if="msg.good_points" type="success" size="small">做得好：{{ msg.good_points }}</el-tag>
               </div>
               <p>{{ msg.content }}</p>
+              <VoiceFeedback :items="msg.voice_assessments || []" />
             </li>
           </ol>
           <el-empty v-else description="暂无可回放的对话" />
@@ -182,6 +183,7 @@
 </template>
 
 <script setup>
+import VoiceFeedback from '@/components/VoiceFeedback.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -427,7 +429,7 @@ function retryScene() {
 
 .replay-title .message-count { color: #7f929f; font-size: 12px; }
 .message-list { list-style: none; margin: 0; padding: 0 0 0 20px; border-left: 1px solid #dce5eb; }
-.message-list li { position: relative; margin: 0 0 14px; padding: 14px 16px; border-radius: 10px; background: #f7f9fa; }
+.message-list li { position: relative; min-width: 0; margin: 0 0 14px; padding: 14px 16px; border-radius: 10px; background: #f7f9fa; }
 .message-list li.user { background: #eef6ff; }
 .message-list li.coach { background: #fff8e8; }
 .message-list li.system { background: #edf8f7; }
@@ -439,7 +441,9 @@ function retryScene() {
 .msg-header { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
 .msg-role { color: #2f4c5e; font-weight: 700; font-size: 13px; }
 .msg-header time { color: #8c9da8; font-size: 11px; }
-.message-list p { margin: 8px 0 0; color: #425a69; line-height: 1.7; white-space: pre-line; }
+.msg-header :deep(.el-tag) { min-width: 0; max-width: 100%; height: auto; padding-top: 4px; padding-bottom: 4px; white-space: normal; line-height: 1.55; }
+.msg-header :deep(.el-tag__content) { min-width: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.message-list p { margin: 8px 0 0; color: #425a69; line-height: 1.7; white-space: pre-line; overflow-wrap: anywhere; word-break: break-word; }
 .actions { display: flex; justify-content: center; gap: 12px; margin-top: 28px; }
 .retry-row { display: flex; justify-content: center; margin-top: 20px; }
 
@@ -465,6 +469,7 @@ function retryScene() {
   .sample-grid { grid-template-columns: 1fr; }
   .osce-grid { grid-template-columns: 1fr; }
   .word-insights { align-items: flex-start; flex-direction: column; }
+  .msg-header :deep(.el-tag) { flex: 0 0 100%; }
   .actions { flex-wrap: wrap; }
 }
 </style>

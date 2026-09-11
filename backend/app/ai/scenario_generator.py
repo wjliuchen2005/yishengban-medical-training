@@ -116,6 +116,29 @@ FIRST_VISIT_SETTINGS = (
     "刚结束体育课，你坐在操场边休息时",
 )
 
+FIRST_VISIT_NAMES = {
+    "male": ("陈宇", "周睿", "王晨", "李明轩"),
+    "female": ("林悦", "张雨桐", "陈思妍", "王欣怡"),
+    "unspecified": ("陈宇", "林悦", "周睿", "张雨桐"),
+}
+
+FIRST_VISIT_VOICE_CAST_FALLBACK = {
+    "narrator": {"voice": "苏打", "gender": "male"},
+    "registrar": {"voice": "茉莉", "gender": "female"},
+    "doctor": {"voice": "白桦", "gender": "male"},
+    "cashier": {"voice": "冰糖", "gender": "female"},
+    "pharmacist": {"voice": "茉莉", "gender": "female"},
+}
+
+# MiMo 内置声线的展示性别由声线本身决定，不能信任模型自由填写的 gender，
+# 否则会出现界面标“男”但实际播放女声的割裂。
+MIMO_VOICE_GENDER = {
+    "冰糖": "female",
+    "茉莉": "female",
+    "白桦": "male",
+    "苏打": "male",
+}
+
 CHOKING_CHARACTERS = ("室友", "同学", "食堂阿姨", "路人", "年轻女生", "中年男性")
 CHOKING_LOCATIONS = ("食堂", "宿舍", "图书馆咖啡区", "街边小吃店", "操场边")
 CHOKING_OBJECTS = ("肉块", "果冻", "坚果", "年糕", "鱼丸")
@@ -176,6 +199,49 @@ def _refine_narrative(base_description: str, immutable_fact: str, scene_type: st
     return base_description, "template"
 
 
+def _cast_display_name(role: str, value=None) -> str:
+    defaults = {"narrator": "就医引导", "registrar": "挂号员·林悦", "doctor": "医生·陈宁", "cashier": "收费员·周晴", "pharmacist": "药师·许安"}
+    name = str(value or "").strip()
+    return name if 2 <= len(name) <= 20 and "角色" not in name and "·" in name else defaults[role]
+
+
+def _generate_first_visit_voice_cast() -> tuple[dict[str, dict[str, str]], str]:
+    """Let the scene agent choose a per-session cast with an exclusive doctor voice."""
+    prompt = """你是场景生成智能体，请为第一次独立看病中的角色分配 MiMo 中文声线。
+可选声线只有：冰糖、茉莉、白桦、苏打。每次训练可重新选择医生声线；但在同一次训练中，医生声线不得被旁白、挂号员、收费员或药师使用。非医生角色之间可以复用声线。
+同时为工作人员生成自然的中文姓名，在每项增加 display_name（如挂号员·林悦、医生·陈宁、收费员·周晴、药师·许安）；旁白命名为就医引导。姓名和身份在本次训练中保持一致。
+只返回合法 JSON：
+{"voice_cast":{"narrator":{"voice":"苏打","gender":"male"},"registrar":{"voice":"茉莉","gender":"female"},"doctor":{"voice":"白桦","gender":"male"},"cashier":{"voice":"冰糖","gender":"female"},"pharmacist":{"voice":"茉莉","gender":"female"}}}
+"""
+    try:
+        payload = llm.call_llm_json([], prompt, llm.CHAT_REASONING_EFFORT)
+        raw = payload.get("voice_cast") if isinstance(payload, dict) else None
+        if not isinstance(raw, dict):
+            raise ValueError("voice_cast missing")
+        cast: dict[str, dict[str, str]] = {}
+        for role, fallback in FIRST_VISIT_VOICE_CAST_FALLBACK.items():
+            item = raw.get(role)
+            if not isinstance(item, dict):
+                raise ValueError(f"invalid role {role}")
+            voice = str(item.get("voice") or "")
+            if voice not in MIMO_VOICE_GENDER:
+                raise ValueError(f"invalid voice for {role}")
+            cast[role] = {"voice": voice, "gender": MIMO_VOICE_GENDER[voice], "display_name": _cast_display_name(role, item.get("display_name"))}
+        if any(item["voice"] == cast["doctor"]["voice"] for role, item in cast.items() if role != "doctor"):
+            raise ValueError("doctor voice must be exclusive inside a session")
+        return cast, "agent"
+    except Exception as exc:
+        logger.info("声线编排智能体不可用，使用安全默认声线：%s", exc)
+        voices = list(MIMO_VOICE_GENDER)
+        doctor_voice = _random.choice(voices)
+        other_voices = [voice for voice in voices if voice != doctor_voice]
+        cast = {}
+        for role in FIRST_VISIT_VOICE_CAST_FALLBACK:
+            voice = doctor_voice if role == "doctor" else _random.choice(other_voices)
+            cast[role] = {"voice": voice, "gender": MIMO_VOICE_GENDER[voice], "display_name": _cast_display_name(role)}
+        return cast, "template"
+
+
 def _first_visit_context(gender: str, previous_contexts: list[dict[str, Any]]) -> dict[str, Any]:
     eligible = [
         case for case in FIRST_VISIT_CASES
@@ -201,9 +267,16 @@ def _first_visit_context(gender: str, previous_contexts: list[dict[str, Any]]) -
     case = _choose_without_recent(curriculum_pool, recent_ids, key=lambda item: item["scenario_id"])
     recent_settings = {item.get("setting") for item in previous_contexts[-2:]}
     setting = _choose_without_recent(list(FIRST_VISIT_SETTINGS), recent_settings)
+    recent_names = {item.get("patient_name") for item in previous_contexts[-2:]}
+    patient_name = _choose_without_recent(
+        list(FIRST_VISIT_NAMES.get(gender, FIRST_VISIT_NAMES["unspecified"])),
+        recent_names,
+    )
+    primary_department = case["departments"][0]
+    call_notice = f"请{patient_name}，{patient_name}到{primary_department}3诊室就诊。"
 
     base_description = (
-        f"{setting}，你发现自己{case['symptoms']}。你第一次需要独自处理就医流程，"
+        f"{setting}，你发现自己{case['symptoms']}。本次模拟就诊姓名为{patient_name}。你第一次需要独自处理就医流程，"
         "身边暂时没有家人或同学陪同。"
     )
     narrative, source = _refine_narrative(
@@ -211,6 +284,7 @@ def _first_visit_context(gender: str, previous_contexts: list[dict[str, Any]]) -
         case["symptoms"],
         "第一次独立看病",
     )
+    voice_cast, voice_cast_source = _generate_first_visit_voice_cast()
 
     if case.get("urgent"):
         first_step = "判断紧急程度并前往急诊分诊"
@@ -234,13 +308,13 @@ def _first_visit_context(gender: str, previous_contexts: list[dict[str, Any]]) -
                 "value": "我选择到医院线下现场挂号。",
             },
             {
-                "label": "省人医微信公众号智能问诊",
-                "value": "我不确定该挂哪个科，先打开省人医微信公众号使用智能问诊。",
+                "label": "省人医微信公众号智能分诊",
+                "value": "我不确定该挂哪个科，先打开省人医微信公众号使用智能分诊。",
             },
         ]
         guidance = (
             "你的第一步是选择挂号方式和科室：可以线上预约或线下挂号；"
-            "如果不确定科室，可以在【省人医微信公众号】先使用智能问诊。"
+            "如果不确定科室，可以在【省人医微信公众号】先使用智能分诊相关功能。"
         )
 
     return {
@@ -249,12 +323,17 @@ def _first_visit_context(gender: str, previous_contexts: list[dict[str, Any]]) -
             "kind": "scene_intro",
             "agent_name": "情景生成智能体",
             "scenario_id": case["scenario_id"],
+            "patient_name": patient_name,
             "first_step": first_step,
             "quick_actions": actions,
+            "voice_cast": voice_cast,
         },
         "context": {
             "scene_type": "first_visit",
             "scenario_id": case["scenario_id"],
+            "patient_name": patient_name,
+            "call_notice": call_notice,
+            "outpatient_hours": {"morning": "08:00-11:30", "afternoon": "14:00-17:30"},
             "training_round": training_round,
             "case_group": case["case_group"],
             "gender": gender,
@@ -265,8 +344,15 @@ def _first_visit_context(gender: str, previous_contexts: list[dict[str, Any]]) -
             "setting": setting,
             "narrative": narrative,
             "generator": source,
+            "voice_cast": voice_cast,
+            "voice_cast_source": voice_cast_source,
             "hospital_example": "江苏省人民医院",
             "smart_consultation_channel": "省人医微信公众号",
+            "insurance_resources": [
+                {"title": "2024级新生大学生医保通知", "url": "/static/insurance/njmu-2024-new-student-insurance-notice.pdf"},
+                {"title": "学生医保政策解答手册", "url": "/static/insurance/njmu-student-insurance-faq-2023.docx"},
+                {"title": "南京医科大学大学生医保简介", "url": "/static/insurance/njmu-student-insurance-introduction.docx"},
+            ],
             "initial_visit_check_in_flow": ["自助机打印报到单", "诊间报到机扫码", "排队候诊"],
             "follow_up_check_in_flow": ["使用初诊报到单", "诊间报到机扫码", "排队候诊"],
             "ordinary_order_execution_flow": ["医生开具医嘱", "人工收费窗口缴费", "取药或检查治疗"],
@@ -334,7 +420,8 @@ def _choking_context(previous_contexts: list[dict[str, Any]]) -> dict[str, Any]:
         "narrative": narrative,
         "generator": source,
         "deterioration_after": _random.randint(60, 90),
-        "collapse_after": _random.randint(120, 150),
+        # 即使已开始施救也持续计时，直到患者明确咳出异物；在原阈值上延长 30 秒。
+        "collapse_after": _random.randint(150, 180),
     }
     if special_case:
         # 仅供各智能体内部使用的特殊情境说明，不出现在开场白里
@@ -512,7 +599,7 @@ def _osce_context(previous_contexts: list[dict[str, Any]]) -> dict[str, Any]:
                 "系统回顾", "个人婚育月经史", "家族史",
             ],
             "record_requirements": [
-                "主诉", "现病史", "其他病史", "体格检查", "辅助检查",
+                "基本信息", "主诉", "现病史", "其他病史", "体格检查", "辅助检查",
                 "病历摘要", "初步诊断与鉴别诊断",
             ],
             "target_user_turns": "8-12",

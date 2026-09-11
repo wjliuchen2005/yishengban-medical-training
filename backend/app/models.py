@@ -4,7 +4,7 @@ SQLAlchemy ORM 模型
 对应 database/init.sql 中的表结构。
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON, Text
+from sqlalchemy import Column, Integer, String, DateTime, JSON, Text, UniqueConstraint
 from app.database import Base
 
 
@@ -53,6 +53,8 @@ class ChatSession(Base):
     started_at = Column(DateTime, default=datetime.utcnow)
     ended_at = Column(DateTime)
     is_rated = Column(Integer, default=0)
+    is_favorite = Column(Integer, default=0)
+    is_pinned = Column(Integer, default=0)
 
 
 class ChatMessage(Base):
@@ -80,3 +82,32 @@ class Result(Base):
     decision = Column(Integer)
     details = Column(JSON)  # 详细评分 JSON
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PsychSession(Base):
+    """易心私密对话历史。摘要和完整消息均使用 Fernet 加密后落库。"""
+    __tablename__ = "psych_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    encrypted_summary = Column(Text, nullable=False)
+    encrypted_payload = Column(Text, nullable=False)
+    is_favorite = Column(Integer, default=0)
+    is_pinned = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DailyUsage(Base):
+    """按账户、自然日记录大模型估算 token 与人民币成本。"""
+    __tablename__ = "daily_usage"
+    __table_args__ = (UniqueConstraint("user_id", "usage_date", name="uq_daily_usage_user_date"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    usage_date = Column(String(10), index=True, nullable=False)
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    cached_input_tokens = Column(Integer, default=0)
+    cost_micrormb = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

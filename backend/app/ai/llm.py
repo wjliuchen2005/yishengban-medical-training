@@ -14,6 +14,7 @@ import os
 import json
 from openai import OpenAI
 from dotenv import load_dotenv
+from app.voice import VOICE_GUIDANCE
 
 load_dotenv()
 
@@ -68,7 +69,7 @@ def _complete(
         request_options["max_retries"] = max_retries
     request_client = client.with_options(**request_options) if request_options else client
 
-    full_messages = [{"role": "system", "content": system_prompt}]
+    full_messages = [{"role": "system", "content": system_prompt + VOICE_GUIDANCE}]
     full_messages.extend(messages)
 
     kwargs = _thinking_kwargs(reasoning_effort)

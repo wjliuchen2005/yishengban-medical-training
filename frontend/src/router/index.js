@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { stopUnifiedSpeaking } from '@/utils/ttsService'
+import { getPsychExitGuard } from '@/utils/psychExitGuard'
 
 const routes = [
   // 登录注册
@@ -8,13 +9,13 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: () => import('@/views/LoginView.vue'),
-    meta: { title: '登录 - “易”生伴', requiresAuth: false, guideText: '我是“易”生伴，有什么需要帮助的吗？' }
+    meta: { title: '登录 - “易”生伴', requiresAuth: false }
   },
   {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/RegisterView.vue'),
-    meta: { title: '注册 - “易”生伴', requiresAuth: false, guideText: '我是“易”生伴，有什么需要帮助的吗？' }
+    meta: { title: '注册 - “易”生伴', requiresAuth: false }
   },
 
   // 主功能（需登录）
@@ -22,7 +23,7 @@ const routes = [
     path: '/',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
-    meta: { title: '场景选择 - “易”生伴', requiresAuth: true, guideText: '我是“易”生伴，有什么需要帮助的吗？请选择你想要训练的场景。' }
+    meta: { title: '场景选择 - “易”生伴', requiresAuth: true, guideText: '欢迎来到训练场景，请选择你想要进行的训练。' }
   },
   {
     path: '/chat/:sceneId',
@@ -68,17 +69,20 @@ const router = createRouter({
 })
 
 // 路由守卫：未登录跳转登录页
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from) => {
+  if (from.name === 'Psych' && to.name !== 'Psych') {
+    const guard = getPsychExitGuard()
+    if (guard && !(await guard(to, from))) return false
+  }
   // 每次切换页面先停止上一页语音，避免跨页面叠音。
   stopUnifiedSpeaking()
   document.title = to.meta.title || '“易”生伴'
   const userStore = useUserStore()
 
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else {
-    next()
+    return { name: 'Login', query: { redirect: to.fullPath } }
   }
+  return true
 })
 
 export default router

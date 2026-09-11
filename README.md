@@ -23,7 +23,7 @@
 2. **异物梗阻急救**：训练危险识别、呼救、成人海姆立克急救和后续处置；患者脱离最大危险后不会再被时间压力误判为倒地。
 3. **OSCE 模拟问诊与病历书写**：以问诊为主线，体格检查和辅助检查快速过渡，并将学生独立填写的病历记录纳入评分。首次训练使用经审核的固定病例并只变化开场细节，第二次起由场景生成智能体创建新病例。
 
-平台还提供“易心聊”心理陪伴、训练历史、完整回放、记录删除和个人信息管理。页面内的原始“易”生伴数字人会根据所在页面主动介绍功能，并在切换页面时停止上一段语音。
+平台还提供“易心聊”心理陪伴、训练历史、完整回放、记录删除和个人信息管理。训练历史支持收藏、置顶、按场景/状态/用时排序及全局成长总结；易心历史采用按用户派生密钥加密存储，并支持简短摘要、收藏、置顶与删除。页面内的原始“易”生伴数字人会根据所在页面主动介绍功能，并在切换页面时停止上一段语音。
 
 ### 多智能体协作
 
@@ -57,19 +57,23 @@ OSCE 评分总分 100 分：医学准确性 40 分、沟通温度 20 分、决�
 - 危险操作识别与阶段约束，避免错误流程被直接放行。
 - OSCE 同屏病历编辑区与结构化评分反馈。
 - 对话、语音播报、数字人状态和场景阶段联动。
+- 接入小米 MiMo V2.5 TTS：按页面角色、性别与当前情绪自动选择中文音色；服务不可用时自动回退本地语音。进入“易心”前会明确说明文本处理方式，并允许退出或关闭云端语音。
+- 分层 SVG 数字人结合状态机和 CSS 动画，可切换说话、倾听、咳嗽、喘气、惊吓、点头等表情动作；场景封面使用栅格图像。
 - 响应式布局，适配桌面浏览器和手机内置浏览器。
 - 网络评分中断后可重试，不会永久停留在“正在评分”。
-- 支持删除个人训练记录。
+- 支持删除、收藏、置顶和排序个人训练记录，并生成跨项目成长总结。
+- 每个账号设置每日 2 元保护性模型额度；测试账号达到额度后展示保护提示但仍可继续演示。
+- 南京医科大学用户询问医保时，可在对话中获取三份校内政策材料；入学当年 9—12 月与次年待遇起算规则按学校材料说明。
 
-### 测试情况（2026-09-04）
+### 测试情况（2026-09-05）
 
 | 项目 | 结果 |
 |---|---|
-| 后端自动化单元测试 | 22/22 通过 |
+| 后端自动化单元测试 | 29/29 通过 |
 | 前端生产构建 | 通过 |
 | 公网健康检查 | `/api/health` 返回 `{"status":"ok"}` |
 | OSCE 完整流程 | 场景进入、问诊、病历保存、结束与评分链路通过 |
-| 手机端检查 | 数字人可见、场景图片无右侧空白、OSCE 病历编辑区无横向溢出 |
+| 手机端检查 | 390 px 视口下首页、易心、历史、OSCE 数字人可见且无横向溢出；病历面板紧接对话区 |
 
 预期结果：学生能够在低风险模拟环境中反复练习首次就医、急救沟通和结构化问诊，形成更明确的流程认知、危险识别能力、沟通意识与复盘习惯。
 
@@ -79,6 +83,7 @@ OSCE 评分总分 100 分：医学准确性 40 分、沟通温度 20 分、决�
 - 后端：FastAPI、SQLAlchemy 2、Pydantic 2、JWT、bcrypt
 - 数据库：MySQL 8.0
 - 智能体模型：兼容 OpenAI API 的大模型服务，可配置智谱 GLM、DeepSeek 等服务
+- 当前语音：小米 MiMo V2.5 TTS（后端代理、角色/情绪控制），浏览器 Web Speech API 与 meSpeak 作为故障回退
 - 部署：Nginx + HTTPS + Uvicorn/systemd
 
 ### 本地运行
@@ -105,7 +110,7 @@ cd backend
 cp .env.example .env
 ```
 
-编辑 `backend/.env`，至少填写数据库密码、`JWT_SECRET_KEY`、`LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL`。生产部署还应把 `CORS_ORIGINS` 设置为实际 HTTPS 域名。
+编辑 `backend/.env`，至少填写数据库密码、`JWT_SECRET_KEY`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `MIMO_API_KEY`。MiMo 配置采用官方兼容地址 `https://api.xiaomimimo.com/v1` 与模型 `mimo-v2.5-tts`；生产部署还应把 `CORS_ORIGINS` 设置为实际 HTTPS 域名。
 
 生成 JWT 随机密钥示例：
 
@@ -197,7 +202,7 @@ The current release provides three core training scenarios:
 2. **Foreign-Body Airway Obstruction First Aid**: trains danger recognition, emergency activation, adult Heimlich maneuvers, and follow-up care. Once the patient is out of immediate danger, the timer no longer incorrectly causes a collapse.
 3. **OSCE History Taking and Medical Record Writing**: focuses on history taking, transitions quickly through physical and auxiliary examinations, and includes the student's independently written medical record in the assessment. The first attempt uses a reviewed fixed case with only minor opening variations; from the second attempt onward, the scenario-generation agent creates a new case.
 
-The platform also includes the “Yixin Chat” wellbeing companion, training history, complete replay, record deletion, and profile management. The original Yishengban digital mascot introduces each page and stops the previous voice line whenever navigation occurs.
+The platform also includes the “Yixin Chat” wellbeing companion, training history, complete replay, record deletion, and profile management. Training history supports favorites, pinning, scene/status/duration sorting, and an aggregate growth report. Yixin history is encrypted with a per-user derived key and supports short summaries, favorites, pinning, and deletion. The original Yishengban digital mascot introduces each page and stops the previous voice line whenever navigation occurs.
 
 ### Multi-Agent Collaboration
 
@@ -231,19 +236,23 @@ The OSCE total is 100 points: medical accuracy 40, communication warmth 20, and 
 - Unsafe-action interception and stage constraints.
 - Side-by-side OSCE medical-record editor and structured assessment.
 - Synchronized dialogue, speech, digital-human state, and scenario stage.
+- Xiaomi MiMo V2.5 TTS selects Chinese voices by role, gender, and current emotion, with automatic local fallback. Before entering Yixin, users see a clear text-processing notice and may leave or continue with cloud speech disabled.
+- Layered SVG mascots driven by a state machine and CSS animations for speaking, listening, choking, panting, startling, and nodding; raster artwork is used for scenario covers.
 - Responsive layouts for desktop and mobile in-app browsers.
 - Recoverable rating when a network interruption occurs.
-- User-controlled deletion of training records.
+- Deletion, favorites, pinning, sorting, and aggregate growth summaries for training records.
+- A protective CNY 2 daily model budget per account; the test account displays the limit while continuing the demo.
+- Three NJMU insurance-policy resources can be shared by the registrar agent when relevant.
 
-### Verification Snapshot (2026-09-04)
+### Verification Snapshot (2026-09-05)
 
 | Check | Result |
 |---|---|
-| Backend automated unit tests | 22/22 passed |
+| Backend automated unit tests | 29/29 passed |
 | Frontend production build | Passed |
 | Public health endpoint | `/api/health` returned `{"status":"ok"}` |
 | Complete OSCE flow | Scenario, interview, record save, completion, and rating path passed |
-| Mobile checks | Digital human visible, scene cover aligned, and the OSCE record editor had no horizontal overflow |
+| Mobile checks | At a 390 px viewport, the mascot is visible on Home, Yixin, History, and OSCE; no horizontal overflow; the record panel follows the interview area |
 
 Expected outcome: students can repeatedly practice first-time care navigation, emergency communication, and structured history taking in a low-risk environment, improving procedural understanding, danger recognition, communication awareness, and reflective learning.
 
@@ -253,6 +262,7 @@ Expected outcome: students can repeatedly practice first-time care navigation, e
 - Backend: FastAPI, SQLAlchemy 2, Pydantic 2, JWT, bcrypt
 - Database: MySQL 8.0
 - Agent model: OpenAI-compatible LLM services, configurable for Zhipu GLM, DeepSeek, and similar providers
+- Current speech: Xiaomi MiMo V2.5 TTS through a secured backend proxy with role/emotion control; Web Speech API and meSpeak remain as failure fallbacks
 - Deployment: Nginx, HTTPS, Uvicorn, and systemd
 
 ### Local Setup
@@ -279,7 +289,7 @@ cd backend
 cp .env.example .env
 ```
 
-Edit `backend/.env` and provide at least the database password, `JWT_SECRET_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. In production, set `CORS_ORIGINS` to the actual HTTPS domain.
+Edit `backend/.env` and provide at least the database password, `JWT_SECRET_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, and `MIMO_API_KEY`. MiMo uses the official compatible endpoint `https://api.xiaomimimo.com/v1` and model `mimo-v2.5-tts`. In production, set `CORS_ORIGINS` to the actual HTTPS domain.
 
 Example JWT secret generator:
 
