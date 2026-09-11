@@ -1,134 +1,103 @@
-# “易”生伴：高校健康教育多智能体情境训练平台
+# “易”生伴 · 高校健康教育情境训练平台
 
-> 面向高校学生的健康素养、就医能力、急救能力与临床问诊训练作品。
+“易”生伴面向高校学生，把真实生活中的就医、急救与问诊需求转化为可对话、可练习、可复盘的情境学习。学生可以直接输入账号或手机号与密码完成注册，并在手机微信浏览器、手机浏览器和桌面浏览器中使用。
 
-## 中文说明
+- 体验入口：[https://43-129-236-191.sslip.io](https://43-129-236-191.sslip.io)
+- 源码仓库：[wjliuchen2005/yishengban-medical-training](https://github.com/wjliuchen2005/yishengban-medical-training)
 
-### 应用入口
+> 本项目用于教学、训练和作品演示。真实紧急情况请立即联系当地急救服务，并遵循专业人员指导。
 
-- 公网体验：[https://43-129-236-191.sslip.io](https://43-129-236-191.sslip.io)
-- 测试账号：`test`
-- 测试密码：`123456`
-- 仓库地址：[https://github.com/wjliuchen2005/yishengban-medical-training](https://github.com/wjliuchen2005/yishengban-medical-training)
+## 产品能力
 
-![GitHub 仓库二维码](github-repository-qr.png)
+### 四类学习场景
 
-### 项目简介
+| 场景 | 学习内容 |
+| --- | --- |
+| 首次独立就医 | 在完整门诊流程中练习挂号、报到、候诊、问诊、检查、缴费和复诊沟通。 |
+| 异物梗阻急救 | 识别危险、呼救、实施成人海姆立克急救，并完成脱险后的后续沟通。 |
+| OSCE 模拟问诊 | 练习结构化病史采集、关键检查过渡和独立病历书写，获得量化复盘。 |
+| 易心陪伴 | 在私密对话中表达近况、整理感受；系统根据完整语境保持自然回应，在明确即时危险时提供现实求助指引。 |
 
-“易”生伴围绕高校真实健康教育场景，把传统知识讲解转化为可互动、可反馈、可复盘的智能体训练。学生不只阅读正确答案，而是在动态情境中做出判断、与虚拟角色沟通、接受观察者教练提示，并在训练结束后查看三维评分与完整对话回放。
+### 多智能体训练闭环
 
-系统当前提供三类核心训练：
+场景生成、情境人物对话、观察者教练、阶段判断与评分复盘共同完成一次训练。系统会把工作人员显示为具体称呼，例如“挂号员·姓名”，避免以抽象身份打断沉浸感。
 
-1. **第一次独立看病**：以江苏省人民医院普通门诊流程为例，训练挂号、报到、候诊、问诊、缴费、检查、治疗与复诊等关键决策。
-2. **异物梗阻急救**：训练危险识别、呼救、成人海姆立克急救和后续处置；患者脱离最大危险后不会再被时间压力误判为倒地。
-3. **OSCE 模拟问诊与病历书写**：以问诊为主线，体格检查和辅助检查快速过渡，并将学生独立填写的病历记录纳入评分。首次训练使用经审核的固定病例并只变化开场细节，第二次起由场景生成智能体创建新病例。
+训练结束后可查看完整对话、教练提示、结构化评分和改进建议。历史记录支持收藏、置顶、排序、删除与跨训练成长总结；易心历史按用户派生密钥加密保存。
 
-平台还提供“易心聊”心理陪伴、训练历史、完整回放、记录删除和个人信息管理。训练历史支持收藏、置顶、按场景/状态/用时排序及全局成长总结；易心历史采用按用户派生密钥加密存储，并支持简短摘要、收藏、置顶与删除。页面内的原始“易”生伴数字人会根据所在页面主动介绍功能，并在切换页面时停止上一段语音。
+### 语音输入与表达观察
 
-### 多智能体协作
+- 桌面端点击语音输入后开始录音；移动端进入语音输入后，按住“按住说话”录音、松开停止。
+- MiMo V2.5 ASR 以流式结果分段返回文字，结果插入当前光标位置；停止录音后仍可编辑，最终发送的文字始终以用户编辑内容为准。
+- 同一条消息可包含多段录音。每段录音可附带一条基于声音的表达观察，供教练、评分或易心理解沟通节奏与语气。
+- 表达观察只辅助对话，不替代文字内容，不依据性别、设备、环境或口音评分；声音证据不足时不输出分数。原始录音不作为训练历史保存。
 
-| 智能体 | 职责 |
-|---|---|
-| 场景生成智能体 | 根据训练主题生成背景、角色状态、阶段目标和动态事件 |
-| 场景角色智能体 | 扮演患者、陪同者或工作人员，维持角色边界并根据学生行为回应 |
-| 观察者教练智能体 | 在不中断主对话的前提下提供即时、可回看的训练提示 |
-| 阶段判断智能体 | 判断学生是否达到当前阶段目标，并控制流程推进或快速跳过体验节点 |
-| 评分智能体 | 综合对话、处置路径和病历记录，输出评分、检查表与改进建议 |
+### 数字人与语音播报
 
-训练闭环为：**情境生成 → 对话训练 → 即时教练 → 阶段判断 → 评分复盘**。
+界面内置状态驱动数字人，支持说话、倾听、点头、咳嗽、喘气、惊讶等动作。对话人物可由后端通过 MiMo V2.5 TTS 合成语音；服务不可用时前端回退到浏览器语音能力。已提供页面引导音频和可导出的数字人状态素材。
 
-### OSCE 问诊框架
+## 技术架构
 
-OSCE 场景遵循“问诊重点、检查从简”的设计：
+| 模块 | 主要技术 |
+| --- | --- |
+| 前端 | Vue 3、Vite 5、Pinia、Vue Router、Element Plus、Axios、GSAP、Sass |
+| 后端 | FastAPI、SQLAlchemy 2、Pydantic 2、JWT、bcrypt、httpx |
+| 数据库 | MySQL 8.0 |
+| 智能体 | 兼容 OpenAI API 的模型服务，可配置 GLM、DeepSeek 等 |
+| 语音 | 小米 MiMo V2.5 ASR、语音表达分析与 TTS；Web Speech API 作为前端播报回退 |
+| 部署 | Nginx、HTTPS、Uvicorn、systemd |
 
-1. 礼仪与身份确认：问候、自我介绍、核对患者身份、取得沟通同意。
-2. 主诉与现病史：起病情况、主要症状、伴随症状、诱因、演变、诊疗经过和一般情况。
-3. 其他病史：既往史、用药史、过敏史、个人史、婚育史、月经史和家族史，并按病例选择重点。
-4. 快速检查过渡：学生提出一项合理体格检查或辅助检查后，考官在不超过四个短句内给出关键结果并进入病历书写，不反复训练操作细节。
-5. 病历记录：病历编辑区在电脑端常驻于对话旁，手机端紧接对话区展示；学生独立填写主诉、现病史、相关病史、查体/检查摘要和初步诊断后才能结束训练。
+主要接口包括：认证与用户资料、场景与训练会话、实时对话与教练、评分复盘、易心会话、语音转写/表达分析，以及语音合成。后端 API 文档在启动后位于 `/docs`。
 
-OSCE 评分总分 100 分：医学准确性 40 分、沟通温度 20 分、决策合理性 40 分。其中病历记录本身占决策评分的重要部分。
+## 本地运行
 
-### 功能特色
+### 环境要求
 
-- 动态生成情境，避免固定题库的机械背诵。
-- 五类智能体分工协作，形成全过程训练闭环。
-- 观察者教练提示可在训练历史中回看。
-- 危险操作识别与阶段约束，避免错误流程被直接放行。
-- OSCE 同屏病历编辑区与结构化评分反馈。
-- 对话、语音播报、数字人状态和场景阶段联动。
-- 接入小米 MiMo V2.5 TTS：按页面角色、性别与当前情绪自动选择中文音色；服务不可用时自动回退本地语音。进入“易心”前会明确说明文本处理方式，并允许退出或关闭云端语音。
-- 分层 SVG 数字人结合状态机和 CSS 动画，可切换说话、倾听、咳嗽、喘气、惊吓、点头等表情动作；场景封面使用栅格图像。
-- 响应式布局，适配桌面浏览器和手机内置浏览器。
-- 网络评分中断后可重试，不会永久停留在“正在评分”。
-- 支持删除、收藏、置顶和排序个人训练记录，并生成跨项目成长总结。
-- 每个账号设置每日 2 元保护性模型额度；测试账号达到额度后展示保护提示但仍可继续演示。
-- 南京医科大学用户询问医保时，可在对话中获取三份校内政策材料；入学当年 9—12 月与次年待遇起算规则按学校材料说明。
-
-### 测试情况（2026-09-05）
-
-| 项目 | 结果 |
-|---|---|
-| 后端自动化单元测试 | 29/29 通过 |
-| 前端生产构建 | 通过 |
-| 公网健康检查 | `/api/health` 返回 `{"status":"ok"}` |
-| OSCE 完整流程 | 场景进入、问诊、病历保存、结束与评分链路通过 |
-| 手机端检查 | 390 px 视口下首页、易心、历史、OSCE 数字人可见且无横向溢出；病历面板紧接对话区 |
-
-预期结果：学生能够在低风险模拟环境中反复练习首次就医、急救沟通和结构化问诊，形成更明确的流程认知、危险识别能力、沟通意识与复盘习惯。
-
-### 技术架构
-
-- 前端：Vue 3、Vite 5、Pinia、Vue Router、Element Plus、Axios、meSpeak
-- 后端：FastAPI、SQLAlchemy 2、Pydantic 2、JWT、bcrypt
-- 数据库：MySQL 8.0
-- 智能体模型：兼容 OpenAI API 的大模型服务，可配置智谱 GLM、DeepSeek 等服务
-- 当前语音：小米 MiMo V2.5 TTS（后端代理、角色/情绪控制），浏览器 Web Speech API 与 meSpeak 作为故障回退
-- 部署：Nginx + HTTPS + Uvicorn/systemd
-
-### 本地运行
-
-#### 环境要求
-
-- Python 3.10 或更高版本
-- Node.js 18 或更高版本
+- Python 3.10+
+- Node.js 18+
 - MySQL 8.0
-- 一个兼容 OpenAI API 的大模型服务密钥
+- 一个兼容 OpenAI API 的模型服务密钥
+- MiMo API 密钥（启用语音转写、表达观察或语音合成时需要）
 
-#### 1. 初始化数据库
+### 1. 初始化数据库
 
-> `database/init.sql` 会删除并重建名为 `yishengban` 的数据库，请勿对存有正式数据的数据库直接执行。
+首次本地使用可执行：
 
 ```bash
 mysql -u root -p < database/init.sql
 ```
 
-#### 2. 配置后端
+> `database/init.sql` 会删除并重建 `yishengban` 数据库，不能用于含有正式数据的环境。
+
+已运行过旧版本的数据库，请在备份后按时间顺序执行 `database/migrations/` 下的 SQL 文件。
+
+### 2. 配置后端
 
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-编辑 `backend/.env`，至少填写数据库密码、`JWT_SECRET_KEY`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `MIMO_API_KEY`。MiMo 配置采用官方兼容地址 `https://api.xiaomimimo.com/v1` 与模型 `mimo-v2.5-tts`；生产部署还应把 `CORS_ORIGINS` 设置为实际 HTTPS 域名。
-
-生成 JWT 随机密钥示例：
+至少配置数据库连接、`JWT_SECRET_KEY`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `MIMO_API_KEY`。生产环境还应将 `CORS_ORIGINS` 设置为实际 HTTPS 域名。
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-#### 3. 安装并启动后端
+可用环境变量见 [`backend/.env.example`](backend/.env.example)。不要提交 `.env`、模型密钥、数据库备份或用户数据。
+
+### 3. 启动后端
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-#### 4. 安装并启动前端
+后端健康检查：`http://localhost:8000/api/health`；接口文档：`http://localhost:8000/docs`。
+
+### 4. 启动前端
 
 ```bash
 cd frontend
@@ -136,16 +105,16 @@ npm ci
 npm run dev
 ```
 
-浏览器访问 `http://localhost:5173`。后端接口文档位于 `http://localhost:8000/docs`。
+浏览器访问 `http://localhost:5173`。开发服务器会将 `/api` 转发到本地后端；若后端使用其他端口，可执行 `VITE_BACKEND_PORT=8001 npm run dev`。
 
-macOS 也可双击 `启动服务.command`，Windows 可双击 `启动服务.bat`。首次运行前仍需安装 MySQL、Python、Node.js，并完成 `backend/.env` 配置。
+macOS 可使用 [`启动服务.command`](启动服务.command)，Windows 可使用 [`启动服务.bat`](启动服务.bat) 作为本地启动辅助脚本。首次使用前仍需完成 MySQL、Python、Node.js 和 `backend/.env` 配置。
 
-### 测试与构建
+## 验证与构建
 
 ```bash
-# 后端测试
-cd backend
-python -m unittest discover -s tests -p 'test_*.py' -v
+# 在仓库根目录：安装测试工具并运行后端测试
+python -m pip install pytest
+PYTHONPATH=backend python -m pytest backend/tests -q
 
 # 前端生产构建
 cd frontend
@@ -153,207 +122,46 @@ npm ci
 npm run build
 ```
 
-### 生产部署安全清单
+本次源码同步前已完成前端生产构建与后端 Python 静态编译。语音录音在不同手机浏览器中依赖用户授予麦克风权限，发布前应在目标设备上完成一次端到端录音、转写与发送验证。
 
-- 不提交 `backend/.env`、API 密钥、服务器私钥、数据库备份或用户上传文件。
-- 使用足够长且唯一的 `JWT_SECRET_KEY`，并限制 LLM API 额度和来源。
-- 仅允许实际 HTTPS 域名出现在 `CORS_ORIGINS`。
-- Uvicorn 仅监听 `127.0.0.1`，由 Nginx 反向代理；公网只开放必要的 22、80、443 端口。
-- 数据库只监听内网或本机，并使用专用低权限账号。
-- 启用 HTTPS、安全响应头、登录限流、系统更新、日志轮转和定期备份。
-- 发布前修改或停用公开测试账号。
+## 生产部署要点
 
-### 项目结构
+- Uvicorn 仅监听 `127.0.0.1`，由 Nginx 提供 HTTPS 反向代理；公网只开放必要端口。
+- 为数据库使用低权限专用账号，数据库仅监听本机或内网。
+- 使用强且唯一的 `JWT_SECRET_KEY`，限制模型服务额度与来源，并设置明确的 `CORS_ORIGINS`。
+- 保留系统更新、日志轮转和定期备份；发布前检查默认账户与演示数据。
+- 语音请求仅通过受保护后端接口转发，浏览器不持有模型服务密钥。
+
+## 目录结构
 
 ```text
 .
-├── backend/                  # FastAPI API、智能体流程、评分和测试
-├── database/                 # MySQL 初始化与迁移脚本
-├── frontend/                 # Vue 3 界面、数字人、语音和移动端适配
-├── 启动服务.command          # macOS 本地启动器
-├── 启动服务.bat              # Windows 本地启动器
+├── backend/       # FastAPI、智能体流程、语音服务、评分与测试
+├── database/      # MySQL 初始化脚本与增量迁移
+├── frontend/      # Vue 界面、数字人、语音输入与移动端适配
+├── scripts/       # 素材生成与界面联调脚本
+├── 启动服务.command
+├── 启动服务.bat
 └── README.md
 ```
-
-### 医疗免责声明
-
-本项目用于教学、训练和作品演示，不提供真实诊断、治疗或急救替代方案。真实紧急情况应立即联系当地急救服务并遵循专业人员指导。
 
 ---
 
-## English Documentation
+# Yishengban · Scenario-Based Health Training for University Students
 
-### Application Access
+Yishengban turns hospital navigation, first-aid response, clinical history taking, and wellbeing conversations into interactive learning sessions. It supports desktop browsers, mobile browsers, and in-app mobile browsers. Users can register directly with an account name or phone number and a password.
 
-- Live demo: [https://43-129-236-191.sslip.io](https://43-129-236-191.sslip.io)
-- Test username: `test`
-- Test password: `123456`
-- Repository: [https://github.com/wjliuchen2005/yishengban-medical-training](https://github.com/wjliuchen2005/yishengban-medical-training)
+## Highlights
 
-![GitHub repository QR code](github-repository-qr.png)
+- Four learning areas: independent hospital visits, foreign-body airway-obstruction first aid, OSCE history taking with medical-record writing, and the Yixin wellbeing companion.
+- A multi-agent loop for scenario creation, contextual participants, live coaching, stage progression, and scored review.
+- Cursor-aware streaming voice input. Desktop users tap to record; mobile users hold to speak. Transcripts remain editable before sending.
+- Optional, evidence-bounded voice-expression observations across multiple recordings in one message. They supplement the conversation and never override the user's final edited text.
+- Responsive digital humans with state-based gestures and MiMo V2.5 text-to-speech, with browser speech fallback.
+- Private history, favorites, pinning, ordering, deletion, and growth summaries.
 
-### Overview
+## Stack and setup
 
-Yishengban is a multi-agent, scenario-based health education platform for university students. It turns static health knowledge into interactive practice with decisions, role-play conversations, observer-coach feedback, stage progression, structured scoring, and full-session review.
+The frontend uses Vue 3 and Vite; the backend uses FastAPI and MySQL. It connects to OpenAI-compatible LLM services and Xiaomi MiMo V2.5 voice services through protected backend endpoints. See the Chinese sections above for the complete local setup, environment variables, migrations, test commands, and deployment guidance.
 
-The current release provides three core training scenarios:
-
-1. **First Independent Hospital Visit**: uses the outpatient workflow of Jiangsu Province Hospital as an example and trains registration, check-in, consultation, payment, examination, treatment, and follow-up decisions.
-2. **Foreign-Body Airway Obstruction First Aid**: trains danger recognition, emergency activation, adult Heimlich maneuvers, and follow-up care. Once the patient is out of immediate danger, the timer no longer incorrectly causes a collapse.
-3. **OSCE History Taking and Medical Record Writing**: focuses on history taking, transitions quickly through physical and auxiliary examinations, and includes the student's independently written medical record in the assessment. The first attempt uses a reviewed fixed case with only minor opening variations; from the second attempt onward, the scenario-generation agent creates a new case.
-
-The platform also includes the “Yixin Chat” wellbeing companion, training history, complete replay, record deletion, and profile management. Training history supports favorites, pinning, scene/status/duration sorting, and an aggregate growth report. Yixin history is encrypted with a per-user derived key and supports short summaries, favorites, pinning, and deletion. The original Yishengban digital mascot introduces each page and stops the previous voice line whenever navigation occurs.
-
-### Multi-Agent Collaboration
-
-| Agent | Responsibility |
-|---|---|
-| Scenario generation agent | Generates context, character status, stage objectives, and dynamic events |
-| Scenario role agent | Acts as the patient, companion, or staff member while maintaining role boundaries |
-| Observer coach agent | Provides timely, reviewable guidance without replacing the main conversation |
-| Stage assessment agent | Determines whether objectives are met and advances or fast-forwards the workflow |
-| Scoring agent | Evaluates dialogue, decisions, and medical records and returns actionable feedback |
-
-The training loop is: **scenario generation → dialogue practice → live coaching → stage assessment → scored review**.
-
-### OSCE History-Taking Framework
-
-The OSCE design emphasizes history taking and keeps examinations deliberately brief:
-
-1. Etiquette and identity: greeting, introduction, identity verification, and consent.
-2. Chief complaint and history of present illness: onset, key symptoms, associated symptoms, triggers, progression, previous care, and general condition.
-3. Other history: past medical, medication, allergy, personal, marital/reproductive, menstrual, and family history as relevant.
-4. Fast examination transition: after the student proposes one reasonable physical or auxiliary examination, the examiner returns key findings in no more than four short sentences and moves to record writing.
-5. Medical record: on desktop, the editor remains beside the conversation; on mobile, it follows directly below the conversation. The student must independently complete the chief complaint, HPI, relevant history, examination summary, and preliminary diagnosis before ending the session.
-
-The OSCE total is 100 points: medical accuracy 40, communication warmth 20, and decision quality 40. The medical record is a major component of the decision score.
-
-### Key Features
-
-- Dynamically generated scenarios instead of a purely fixed question bank.
-- Five specialized agents working through a complete training loop.
-- Reviewable observer-coach feedback in training history.
-- Unsafe-action interception and stage constraints.
-- Side-by-side OSCE medical-record editor and structured assessment.
-- Synchronized dialogue, speech, digital-human state, and scenario stage.
-- Xiaomi MiMo V2.5 TTS selects Chinese voices by role, gender, and current emotion, with automatic local fallback. Before entering Yixin, users see a clear text-processing notice and may leave or continue with cloud speech disabled.
-- Layered SVG mascots driven by a state machine and CSS animations for speaking, listening, choking, panting, startling, and nodding; raster artwork is used for scenario covers.
-- Responsive layouts for desktop and mobile in-app browsers.
-- Recoverable rating when a network interruption occurs.
-- Deletion, favorites, pinning, sorting, and aggregate growth summaries for training records.
-- A protective CNY 2 daily model budget per account; the test account displays the limit while continuing the demo.
-- Three NJMU insurance-policy resources can be shared by the registrar agent when relevant.
-
-### Verification Snapshot (2026-09-05)
-
-| Check | Result |
-|---|---|
-| Backend automated unit tests | 29/29 passed |
-| Frontend production build | Passed |
-| Public health endpoint | `/api/health` returned `{"status":"ok"}` |
-| Complete OSCE flow | Scenario, interview, record save, completion, and rating path passed |
-| Mobile checks | At a 390 px viewport, the mascot is visible on Home, Yixin, History, and OSCE; no horizontal overflow; the record panel follows the interview area |
-
-Expected outcome: students can repeatedly practice first-time care navigation, emergency communication, and structured history taking in a low-risk environment, improving procedural understanding, danger recognition, communication awareness, and reflective learning.
-
-### Technology Stack
-
-- Frontend: Vue 3, Vite 5, Pinia, Vue Router, Element Plus, Axios, meSpeak
-- Backend: FastAPI, SQLAlchemy 2, Pydantic 2, JWT, bcrypt
-- Database: MySQL 8.0
-- Agent model: OpenAI-compatible LLM services, configurable for Zhipu GLM, DeepSeek, and similar providers
-- Current speech: Xiaomi MiMo V2.5 TTS through a secured backend proxy with role/emotion control; Web Speech API and meSpeak remain as failure fallbacks
-- Deployment: Nginx, HTTPS, Uvicorn, and systemd
-
-### Local Setup
-
-#### Requirements
-
-- Python 3.10+
-- Node.js 18+
-- MySQL 8.0
-- An API key for an OpenAI-compatible LLM provider
-
-#### 1. Initialize the Database
-
-> `database/init.sql` drops and recreates the `yishengban` database. Never run it against a database that contains production data.
-
-```bash
-mysql -u root -p < database/init.sql
-```
-
-#### 2. Configure the Backend
-
-```bash
-cd backend
-cp .env.example .env
-```
-
-Edit `backend/.env` and provide at least the database password, `JWT_SECRET_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, and `MIMO_API_KEY`. MiMo uses the official compatible endpoint `https://api.xiaomimimo.com/v1` and model `mimo-v2.5-tts`. In production, set `CORS_ORIGINS` to the actual HTTPS domain.
-
-Example JWT secret generator:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-#### 3. Install and Start the Backend
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-#### 4. Install and Start the Frontend
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-Open `http://localhost:5173`. Backend API documentation is available at `http://localhost:8000/docs`.
-
-On macOS, you may also double-click `启动服务.command`; on Windows, double-click `启动服务.bat`. MySQL, Python, Node.js, and a completed `backend/.env` are still required before first use.
-
-### Tests and Production Build
-
-```bash
-# Backend tests
-cd backend
-python -m unittest discover -s tests -p 'test_*.py' -v
-
-# Frontend production build
-cd frontend
-npm ci
-npm run build
-```
-
-### Production Security Checklist
-
-- Never commit `backend/.env`, API keys, SSH keys, database backups, or user uploads.
-- Use a long, unique `JWT_SECRET_KEY`; restrict LLM API quota and allowed sources.
-- List only the real HTTPS domain in `CORS_ORIGINS`.
-- Bind Uvicorn to `127.0.0.1` behind Nginx and expose only the required 22, 80, and 443 ports.
-- Keep MySQL on the host/private network and use a dedicated least-privilege account.
-- Enable HTTPS, security headers, login rate limiting, OS updates, log rotation, and regular backups.
-- Change or disable the public test account before a production launch.
-
-### Repository Layout
-
-```text
-.
-├── backend/                  # FastAPI APIs, agent flow, scoring, and tests
-├── database/                 # MySQL initialization and migrations
-├── frontend/                 # Vue 3 UI, mascot, speech, and responsive layouts
-├── 启动服务.command          # macOS local launcher
-├── 启动服务.bat              # Windows local launcher
-└── README.md
-```
-
-### Medical Disclaimer
-
-This project is intended for education, training, and competition demonstration. It does not provide real medical diagnosis or treatment and must not replace emergency services or professional clinical guidance.
+This project is for education, practice, and demonstration only. It is not a substitute for emergency response, diagnosis, or professional clinical care.
