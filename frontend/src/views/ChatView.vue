@@ -120,7 +120,7 @@
             <el-avatar :size="40" class="message-avatar coach-avatar">教</el-avatar>
             <div class="message-content">
               <div class="message-sender">观察者教练</div>
-              <div class="message-bubble">{{ isFirstVisit && msg.role === 'ai' ? msg.content.replace(/^【[^】\n]{1,30}】\s*/, '') : msg.content }}</div>
+              <div class="message-bubble">{{ msg.content }}</div>
               <button
                 v-if="ttsAvailable"
                 type="button"
@@ -142,7 +142,7 @@
             </el-avatar>
             <div class="message-content">
               <div class="message-sender">{{ msg.role === 'ai' ? speakerName(msg) : '我' }}</div>
-              <div class="message-bubble">{{ msg.content }}</div>
+              <div class="message-bubble">{{ isFirstVisit && msg.role === 'ai' ? msg.content.replace(/^【[^】\n]{1,30}】\s*/, '') : msg.content }}</div>
               <VoiceFeedback v-if="msg.role === 'user'" :items="msg.extra?.voice_assessments || []" />
               <div v-if="msg.role === 'ai' && msg.extra?.attachments?.length" class="message-attachments">
                 <a v-for="item in msg.extra.attachments" :key="item.url" :href="item.url" target="_blank" rel="noopener">
@@ -166,7 +166,7 @@
         <article v-if="loading && replyPending" class="message-wrapper is-ai">
           <el-avatar :size="40" class="message-avatar">{{ aiAvatarText }}</el-avatar>
           <div class="message-content">
-            <div class="message-sender">{{ isFirstVisit ? '正在生成本轮回复…' : currentSpeakerName }}</div>
+            <div class="message-sender">{{ isFirstVisit ? `${currentSpeakerName} · 正在加载语音…` : currentSpeakerName }}</div>
             <div class="message-bubble typing" aria-label="正在回复">
               <span class="dot" /><span class="dot" /><span class="dot" />
             </div>
@@ -379,7 +379,7 @@ import {
   PERSONA_LIST,
   ROLE_PROFILE
 } from '@/utils/live2dMap'
-import { isMiMoTTSSupported, unifiedSpeak, stopUnifiedSpeaking } from '@/utils/ttsService'
+import { isMiMoTTSSupported, prepareMiMoSpeech, playPreparedMiMoSpeech, unifiedSpeak, stopUnifiedSpeaking } from '@/utils/ttsService'
 
 const route = useRoute()
 const router = useRouter()
@@ -463,6 +463,7 @@ const coachLoading = ref(false)
 // represent only the period before text and audio are ready, so a second
 // "..." bubble never appears underneath an already displayed reply.
 const replyPending = ref(false)
+const pendingSpeakerName = ref('')
 const coachReplyPending = ref(false)
 // 患者回复生成期间，学生可继续补充；旧回复将被废弃，再合并上下文生成一次新回复。
 const queuedPatientMessages = ref([])
@@ -492,6 +493,7 @@ let visitPlaybackGeneration = 0
 function stopVoice() {
   visitPlaybackGeneration += 1
   speakGen += 1
+  pendingSpeakerName.value = ''
   stopUnifiedSpeaking()
   stageSpeaking.value = false
 }
@@ -545,6 +547,7 @@ function speakerName(msg) {
   return voiceCast.value?.[role]?.display_name || ROLE_PROFILE[role]?.name || '就医引导'
 }
 const currentSpeakerName = computed(() => {
+  if (pendingSpeakerName.value) return pendingSpeakerName.value
   const last = [...messages.value].reverse().find(m => m.role === 'ai')
   return last ? speakerName(last) : '就医引导'
 })
@@ -645,10 +648,9 @@ function recomputeSpeaker() {
 const AUTO_SPEAK_MAX = 400
 
 // 朗读一条消息：正文剔除【】和（）后再念，同时驱动嘴型
-async function speakMessage(msg, { force = false, onReady } = {}) {
+function speechRequestFor(msg, { force = false } = {}) {
   if (!msg || !voiceEnabled.value || !ttsAvailable.value || inputRecording.value) {
-    onReady?.()
-    return
+    return null
   }
   const speakingRole = resolveCharacterRole(msg.role, {
     isFirstVisit: isFirstVisit.value,
@@ -660,20 +662,41 @@ async function speakMessage(msg, { force = false, onReady } = {}) {
   const text = isChoking.value && speakingRole === 'patient'
     ? String(msg.extra?.speech_text || '').trim()
     : stripForSpeech(msg.content)
-  if (!text) { onReady?.(); return }
-  if (!force && text.length > AUTO_SPEAK_MAX) { onReady?.(); return }
+  if (!text || (!force && text.length > AUTO_SPEAK_MAX)) return null
 
   // 在等待 TTS 启动前锁定消息自己的角色，避免此时切换“问教练”后串用音色。
   const speakingPersona = isChoking.value && speakingRole === 'patient' && chokingCharacter.value
     ? resolvePersona(chokingCharacter.value)
     : null
-  const gen = ++speakGen
-  stopUnifiedSpeaking()
-  await nextTick()
   const fallbackExpression = isChoking.value ? 'choking' : 'neutral'
   const cue = msg.role === 'coach'
     ? { expression: 'explaining', action: 'explain' }
     : extractPerformanceCue(msg.content, sceneKey.value, fallbackExpression)
+  const persona = speakingPersona
+  const profile = ROLE_PROFILE[speakingRole] || {}
+  const gender = persona?.gender || voiceCast.value?.[speakingRole]?.gender || profile.gender || ''
+  const castVoice = voiceCast.value?.[speakingRole]?.voice
+  return {
+    text,
+    options: {
+      role: speakingRole,
+      emotion: cue.expression,
+      gender,
+      mimoVoice: castVoice,
+      pitch: persona?.pitch ?? profile.pitch ?? 1,
+      rate: persona?.rate ?? profile.rate ?? 1
+    }
+  }
+}
+
+async function speakMessage(msg, { force = false, onReady, preparedAudio, usePreparedAudio = false } = {}) {
+  const request = speechRequestFor(msg, { force })
+  if (!request) {
+    onReady?.()
+    return
+  }
+  const gen = ++speakGen
+  await nextTick()
   let readyCalled = false
   const ready = () => {
     if (readyCalled) return
@@ -683,20 +706,13 @@ async function speakMessage(msg, { force = false, onReady } = {}) {
     stageSpeaking.value = true
   }
   try {
-    // 异物梗阻患者：用「人物设定」的音色（阿姨/胖叔…），否则用角色默认音色
-    const persona = speakingPersona
-    const profile = ROLE_PROFILE[speakingRole] || {}
-    const gender = persona?.gender || voiceCast.value?.[speakingRole]?.gender || profile.gender || ''
-    const castVoice = voiceCast.value?.[speakingRole]?.voice
-    await unifiedSpeak(text, {
-      role: speakingRole,
-      emotion: cue.expression,
-      gender,
-      mimoVoice: castVoice,
-      onReady: ready,
-      pitch: persona?.pitch ?? profile.pitch ?? 1,
-      rate: persona?.rate ?? profile.rate ?? 1
-    })
+    const options = { ...request.options, onReady: ready }
+    if (usePreparedAudio) {
+      if (!preparedAudio) { ready(); return }
+      await playPreparedMiMoSpeech(preparedAudio, options)
+    } else {
+      await unifiedSpeak(request.text, options)
+    }
   } catch (error) {
     // MiMo 是唯一语音源。失败时只显示文字，不会混入系统或 meSpeak 声音。
     if (error?.name !== 'AbortError') console.warn('[TTS] MiMo 语音不可用:', error?.message || error)
@@ -710,24 +726,40 @@ async function speakMessage(msg, { force = false, onReady } = {}) {
 async function appendCharacterMessage(msg) {
   const roleSegments = splitRoleSegments(msg)
   if (msg.role === 'ai' && isFirstVisit.value) {
-    // Commit the entire turn before playback: no old segment can appear after a new user turn.
+    // Prepare every role concurrently, but reveal each line only as its own audio starts.
     const segments = roleSegments.map((content, index) => ({
       ...msg, id: `${msg.id}-${index}`, content,
       extra: index === roleSegments.length - 1 ? msg.extra : {}
     }))
-    messages.value.push(...segments)
-    replyPending.value = false
-    applySpeaker(segments[0])
-    scrollToBottom()
     const generation = ++visitPlaybackGeneration
-    void (async () => {
-      for (const segment of segments) {
-        if (generation !== visitPlaybackGeneration) break
+    const audioJobs = segments.map((segment) => {
+      const request = speechRequestFor(segment)
+      return request
+        ? prepareMiMoSpeech(request.text, request.options).catch(() => null)
+        : Promise.resolve(null)
+    })
+    for (const [index, segment] of segments.entries()) {
+      if (generation !== visitPlaybackGeneration) break
+      pendingSpeakerName.value = speakerName(segment)
+      replyPending.value = true
+      applySpeaker(segment)
+      const preparedAudio = await audioJobs[index]
+      if (generation !== visitPlaybackGeneration) break
+      let revealed = false
+      const reveal = () => {
+        if (revealed || generation !== visitPlaybackGeneration) return
+        revealed = true
+        messages.value.push(segment)
+        replyPending.value = false
+        pendingSpeakerName.value = ''
         applySpeaker(segment)
         lastSpokenMsg.value = segment
-        await speakMessage(segment)
+        scrollToBottom()
       }
-    })().catch(error => console.warn('[TTS] 就医语音播放失败:', error))
+      await speakMessage(segment, { preparedAudio, usePreparedAudio: true, onReady: reveal })
+      reveal()
+    }
+    if (generation === visitPlaybackGeneration) pendingSpeakerName.value = ''
     return
   }
   if (roleSegments.length > 1) {

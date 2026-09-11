@@ -138,7 +138,8 @@ onBeforeUnmount(() => {
   position: fixed;
   right: 22px;
   bottom: max(20px, env(safe-area-inset-bottom));
-  z-index: 90;
+  // Keep the assistant available during the result page's loading overlay.
+  z-index: 3001;
   display: flex;
   align-items: flex-end;
   gap: 8px;

@@ -1,7 +1,7 @@
 /** MiMo-only TTS gateway. No browser or meSpeak fallback is permitted. */
 let activeAudio = null
 let activeUrl = ''
-let activeController = null
+const activeControllers = new Set()
 let stopActive = null
 let reusableAudio = null
 const audioCache = new Map()
@@ -79,7 +79,7 @@ async function fetchMiMoBlob(text, options) {
   const key = JSON.stringify(payload)
   if (audioCache.has(key)) return audioCache.get(key)
   const controller = new AbortController()
-  activeController = controller
+  activeControllers.add(controller)
   const timeout = window.setTimeout(() => controller.abort(), 32000)
   try {
     const response = await fetch('/api/tts/synthesize', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal })
@@ -90,16 +90,35 @@ async function fetchMiMoBlob(text, options) {
     return blob
   } finally {
     window.clearTimeout(timeout)
-    if (activeController === controller) activeController = null
+    activeControllers.delete(controller)
   }
+}
+
+// Download may run concurrently for several speakers. Playback remains single-track.
+export async function prepareMiMoSpeech(text, options = {}) {
+  if (!text || !isMiMoTTSSupported()) return null
+  const prepared = PREGENERATED_AUDIO_BY_TEXT.get(text)
+  if (prepared) return { url: prepared, revoke: false }
+  return { blob: await fetchMiMoBlob(text, options), revoke: true }
+}
+
+export function playPreparedMiMoSpeech(prepared, options = {}) {
+  if (!prepared || !isMiMoTTSSupported()) return Promise.resolve({ started: false })
+  // Starting the next utterance should stop only the current audio, not other
+  // speakers whose audio is still downloading in the background.
+  stopActive?.()
+  const url = prepared.url || URL.createObjectURL(prepared.blob)
+  return play(url, options, prepared.revoke)
 }
 
 export async function unifiedSpeak(text, options = {}) {
   if (!text || !isMiMoTTSSupported()) return { started: false }
   stopUnifiedSpeaking()
-  const prepared = PREGENERATED_AUDIO_BY_TEXT.get(text)
-  if (prepared) return play(prepared, options)
-  return play(URL.createObjectURL(await fetchMiMoBlob(text, options)), options, true)
+  return playPreparedMiMoSpeech(await prepareMiMoSpeech(text, options), options)
 }
 
-export function stopUnifiedSpeaking() { activeController?.abort(); activeController = null; stopActive?.() }
+export function stopUnifiedSpeaking() {
+  activeControllers.forEach((controller) => controller.abort())
+  activeControllers.clear()
+  stopActive?.()
+}
