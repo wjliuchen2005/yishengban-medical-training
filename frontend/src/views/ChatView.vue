@@ -120,7 +120,7 @@
             <el-avatar :size="40" class="message-avatar coach-avatar">教</el-avatar>
             <div class="message-content">
               <div class="message-sender">观察者教练</div>
-              <div class="message-bubble">{{ msg.content }}</div>
+              <div class="message-bubble">{{ isFirstVisit && msg.role === 'ai' ? msg.content.replace(/^【[^】\n]{1,30}】\s*/, '') : msg.content }}</div>
               <button
                 v-if="ttsAvailable"
                 type="button"
@@ -166,7 +166,7 @@
         <article v-if="loading && replyPending" class="message-wrapper is-ai">
           <el-avatar :size="40" class="message-avatar">{{ aiAvatarText }}</el-avatar>
           <div class="message-content">
-            <div class="message-sender">{{ currentSpeakerName }}</div>
+            <div class="message-sender">{{ isFirstVisit ? '正在生成本轮回复…' : currentSpeakerName }}</div>
             <div class="message-bubble typing" aria-label="正在回复">
               <span class="dot" /><span class="dot" /><span class="dot" />
             </div>
@@ -211,8 +211,8 @@
         </div>
         <VoiceComposer ref="voiceInputRef" v-model="inputText" :session-id="sessionId || undefined"
           :target="coachMode ? 'coach' : 'patient'" :placeholder="inputPlaceholder"
-          :disabled="initializing || (coachMode && coachLoading)" :sending="coachMode && coachLoading"
-          :send-label="!coachMode && loading ? '补充' : '发送'" @send="onSend()"
+          :disabled="initializing || (coachMode && coachLoading)" :sending="coachMode ? coachLoading : (isFirstVisit && loading)"
+          :send-label="!coachMode && loading ? (isFirstVisit ? '正在回复' : '补充') : '发送'" @send="onSend()"
           @recording="onInputRecording" />
       </footer>
       </div>
@@ -486,9 +486,11 @@ const lastSpokenMsg = ref(null)
 
 // 语音代际：打断旧朗读后，旧 speakMessage 迟到的 finally 不能误清新一轮 speaking 状态
 let speakGen = 0
+let visitPlaybackGeneration = 0
 
 // 打断正在播放的语音（使用者在角色说话时发言 / 关掉语音开关）并复位说话状态
 function stopVoice() {
+  visitPlaybackGeneration += 1
   speakGen += 1
   stopUnifiedSpeaking()
   stageSpeaking.value = false
@@ -707,6 +709,27 @@ async function speakMessage(msg, { force = false, onReady } = {}) {
 // 角色消息统一入口：入流 + 驱动数字人 + 自动朗读
 async function appendCharacterMessage(msg) {
   const roleSegments = splitRoleSegments(msg)
+  if (msg.role === 'ai' && isFirstVisit.value) {
+    // Commit the entire turn before playback: no old segment can appear after a new user turn.
+    const segments = roleSegments.map((content, index) => ({
+      ...msg, id: `${msg.id}-${index}`, content,
+      extra: index === roleSegments.length - 1 ? msg.extra : {}
+    }))
+    messages.value.push(...segments)
+    replyPending.value = false
+    applySpeaker(segments[0])
+    scrollToBottom()
+    const generation = ++visitPlaybackGeneration
+    void (async () => {
+      for (const segment of segments) {
+        if (generation !== visitPlaybackGeneration) break
+        applySpeaker(segment)
+        lastSpokenMsg.value = segment
+        await speakMessage(segment)
+      }
+    })().catch(error => console.warn('[TTS] 就医语音播放失败:', error))
+    return
+  }
   if (roleSegments.length > 1) {
     for (const [index, segment] of roleSegments.entries()) {
       await appendCharacterMessage({ ...msg, id: `${msg.id}-${index}`, content: segment, extra: index === roleSegments.length - 1 ? msg.extra : {} })
@@ -738,12 +761,13 @@ async function appendCharacterMessage(msg) {
 
 function splitRoleSegments(msg) {
   if (msg.role !== 'ai' || !isFirstVisit.value) return [msg.content]
-  const pieces = String(msg.content || '').split(/(?=【[^】]{1,12}】)/).map((item) => item.trim()).filter(Boolean)
+  const pieces = String(msg.content || '').split(/(?=【[^】\n]{1,30}】)/).map((item) => item.trim()).filter(Boolean)
   return pieces.length > 1 && pieces.every((item) => /^【[^】]+】/.test(item)) ? pieces : [msg.content]
 }
 
 function replaySpeech(msg) {
   if (!msg) return
+  stopVoice()
   applySpeaker(msg)
   lastSpokenMsg.value = msg
   // 重播是用户主动触发，不受长度限制
@@ -978,6 +1002,7 @@ async function onSend(prefilledText = '', options = {}) {
   const forcedTarget = options.target || ''
   const sendingToCoach = forcedTarget === 'coach' || (!forcedTarget && coachMode.value && !!sessionId.value)
   if (sendingToCoach && coachLoading.value) return
+  if (!sendingToCoach && isFirstVisit.value && loading.value) return
   const text = (typeof prefilledText === 'string' && prefilledText ? prefilledText : inputText.value).trim()
   if (!text) return
   const voiceClips = options.voiceClips || (prefilledText ? [] : (voiceInputRef.value?.takeClips() || []))
