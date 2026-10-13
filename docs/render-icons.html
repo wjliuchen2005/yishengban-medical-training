@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>评价图标渲染器 - 高清PNG导出</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: white;
+      text-align: center;
+      font-size: 32px;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .subtitle {
+      color: rgba(255,255,255,0.9);
+      text-align: center;
+      font-size: 16px;
+      margin-bottom: 40px;
+    }
+
+    .controls {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .controls h3 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .size-control {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    .size-control label {
+      font-weight: 500;
+      min-width: 100px;
+    }
+
+    .size-control input {
+      flex: 1;
+      max-width: 400px;
+    }
+
+    .size-control span {
+      min-width: 80px;
+      color: #666;
+      font-family: 'Courier New', monospace;
+    }
+
+    .preset-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .preset-btn {
+      padding: 8px 16px;
+      background: #f0f0f0;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background: #e0e0e0;
+      border-color: #667eea;
+    }
+
+    .preset-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+
+    .download-all {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: transform 0.2s;
+    }
+
+    .download-all:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .icons-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .icon-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .icon-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.15);
+    }
+
+    .icon-preview {
+      width: 100%;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .icon-preview::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(45deg, #f0f0f0 25%, transparent 25%),
+        linear-gradient(-45deg, #f0f0f0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #f0f0f0 75%),
+        linear-gradient(-45deg, transparent 75%, #f0f0f0 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      opacity: 0.3;
+      z-index: 0;
+    }
+
+    .icon-container {
+      position: relative;
+      z-index: 1;
+      width: 80%;
+      height: 80%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+    }
+
+    .icon-svg {
+      width: 45%;
+      height: 45%;
+    }
+
+    .icon-info {
+      text-align: center;
+    }
+
+    .icon-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #999;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .icon-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+    }
+
+    .download-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .download-btn:active {
+      transform: translateY(0);
+    }
+
+    canvas {
+      display: none;
+    }
+
+    .info-box {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 30px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .info-box h3 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .info-box ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .info-box li {
+      padding: 8px 0;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-box li::before {
+      content: '✓';
+      color: #667eea;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 评价图标渲染器</h1>
+    <p class="subtitle">从源代码提取的 Element Plus 图标 · 高清透明PNG导出</p>
+
+    <div class="controls">
+      <h3>导出设置</h3>
+      <div class="size-control">
+        <label for="size">图标尺寸:</label>
+        <input type="range" id="size" min="256" max="4096" value="1024" step="256">
+        <span id="sizeValue">1024px</span>
+      </div>
+      <div class="preset-buttons">
+        <button class="preset-btn" data-size="512">512px</button>
+        <button class="preset-btn active" data-size="1024">1024px (推荐)</button>
+        <button class="preset-btn" data-size="2048">2048px</button>
+        <button class="preset-btn" data-size="4096">4096px (超高清)</button>
+      </div>
+      <button class="download-all" onclick="downloadAll()">📦 批量下载所有图标</button>
+    </div>
+
+    <div class="icons-grid" id="iconsGrid"></div>
+
+    <div class="info-box">
+      <h3>📋 图标信息</h3>
+      <ul>
+        <li>来源: Element Plus Icons (@element-plus/icons-vue v2.3.2)</li>
+        <li>格式: 透明背景PNG (Alpha通道)</li>
+        <li>默认尺寸: 1024x1024px (可调节)</li>
+        <li>颜色: 保留原设计配色方案</li>
+        <li>用途: 对话结束后的评价选项图标</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const icons = [
+      {
+        name: 'next',
+        label: 'NEXT',
+        title: '下一次重点',
+        color: '#a76a08',
+        bg: '#fff3db',
+        paths: [
+          'M512 896a384 384 0 1 0 0-768 384 384 0 0 0 0 768m0 64a448 448 0 1 1 0-896 448 448 0 0 1 0 896',
+          'M512 96a32 32 0 0 1 32 32v192a32 32 0 0 1-64 0V128a32 32 0 0 1 32-32m0 576a32 32 0 0 1 32 32v192a32 32 0 1 1-64 0V704a32 32 0 0 1 32-32M96 512a32 32 0 0 1 32-32h192a32 32 0 0 1 0 64H128a32 32 0 0 1-32-32m576 0a32 32 0 0 1 32-32h192a32 32 0 1 1 0 64H704a32 32 0 0 1-32-32'
+        ]
+      },
+      {
+        name: 'timeline',
+        label: 'TIMELINE',
+        title: '对话与决策回放',
+        color: '#536b7d',
+        bg: '#edf2f5',
+        paths: [
+          'M512 896a384 384 0 1 0 0-768 384 384 0 0 0 0 768m0 64a448 448 0 1 1 0-896 448 448 0 0 1 0 896',
+          'M480 256a32 32 0 0 1 32 32v256a32 32 0 0 1-64 0V288a32 32 0 0 1 32-32',
+          'M480 512h256q32 0 32 32t-32 32H480q-32 0-32-32t32-32'
+        ]
+      },
+      {
+        name: 'path-review',
+        label: 'PATH REVIEW',
+        title: '决策路径对比',
+        color: '#6552a2',
+        bg: '#f0ecfb',
+        paths: [
+          'm679.872 348.8-301.76 188.608a127.8 127.8 0 0 1 5.12 52.16l279.936 104.96a128 128 0 1 1-22.464 59.904l-279.872-104.96a128 128 0 1 1-16.64-166.272l301.696-188.608a128 128 0 1 1 33.92 54.272z'
+        ]
+      },
+      {
+        name: 'keep',
+        label: 'KEEP',
+        title: '做得好的地方',
+        color: '#23805b',
+        bg: '#e8f7ef',
+        paths: [
+          'M512 896a384 384 0 1 0 0-768 384 384 0 0 0 0 768m0 64a448 448 0 1 1 0-896 448 448 0 0 1 0 896',
+          'M745.344 361.344a32 32 0 0 1 45.312 45.312l-288 288a32 32 0 0 1-45.312 0l-160-160a32 32 0 1 1 45.312-45.312L480 626.752z'
+        ]
+      }
+    ];
+
+    // 初始化页面
+    function init() {
+      const grid = document.getElementById('iconsGrid');
+      icons.forEach(icon => {
+        const card = createIconCard(icon);
+        grid.appendChild(card);
+      });
+
+      // 绑定尺寸控制事件
+      const sizeSlider = document.getElementById('size');
+      const sizeValue = document.getElementById('sizeValue');
+
+      sizeSlider.addEventListener('input', (e) => {
+        sizeValue.textContent = e.target.value + 'px';
+        updatePresetButtons(e.target.value);
+      });
+
+      // 绑定预设按钮
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const size = e.target.dataset.size;
+          sizeSlider.value = size;
+          sizeValue.textContent = size + 'px';
+          updatePresetButtons(size);
+        });
+      });
+    }
+
+    function updatePresetButtons(size) {
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.size == size);
+      });
+    }
+
+    function createIconCard(icon) {
+      const card = document.createElement('div');
+      card.className = 'icon-card';
+
+      const preview = document.createElement('div');
+      preview.className = 'icon-preview';
+      preview.style.background = icon.bg;
+
+      const container = document.createElement('div');
+      container.className = 'icon-container';
+      container.style.background = icon.bg;
+
+      const svg = createSVG(icon);
+      container.appendChild(svg);
+      preview.appendChild(container);
+
+      const info = document.createElement('div');
+      info.className = 'icon-info';
+
+      const label = document.createElement('div');
+      label.className = 'icon-label';
+      label.textContent = icon.label;
+      label.style.color = icon.color;
+
+      const title = document.createElement('div');
+      title.className = 'icon-title';
+      title.textContent = icon.title;
+
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'download-btn';
+      downloadBtn.textContent = '⬇️ 下载PNG';
+      downloadBtn.onclick = () => downloadIcon(icon);
+
+      info.appendChild(label);
+      info.appendChild(title);
+      info.appendChild(downloadBtn);
+
+      card.appendChild(preview);
+      card.appendChild(info);
+
+      return card;
+    }
+
+    function createSVG(icon) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 1024 1024');
+      svg.setAttribute('class', 'icon-svg');
+
+      icon.paths.forEach(pathData => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('fill', icon.color);
+        path.setAttribute('d', pathData);
+        svg.appendChild(path);
+      });
+
+      return svg;
+    }
+
+    function downloadIcon(icon) {
+      const size = parseInt(document.getElementById('size').value);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.width = size;
+      canvas.height = size;
+
+      // 创建一个临时SVG
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      svg.setAttribute('width', size);
+      svg.setAttribute('height', size);
+      svg.setAttribute('viewBox', '0 0 1024 1024');
+
+      // 添加圆角矩形背景
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('width', size);
+      rect.setAttribute('height', size);
+      rect.setAttribute('rx', size * 0.15); // 15% 圆角
+      rect.setAttribute('fill', icon.bg);
+      svg.appendChild(rect);
+
+      // 添加图标路径（居中，占60%大小）
+      const iconGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const scale = 0.4; // 图标占40%
+      const offset = (1024 * (1 - scale)) / 2;
+      iconGroup.setAttribute('transform', `translate(${offset}, ${offset}) scale(${scale})`);
+
+      icon.paths.forEach(pathData => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('fill', icon.color);
+        path.setAttribute('d', pathData);
+        iconGroup.appendChild(path);
+      });
+      svg.appendChild(iconGroup);
+
+      // 转换为图片
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const img = new Image();
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+
+        canvas.toBlob(function(blob) {
+          const link = document.createElement('a');
+          link.download = `${icon.name}-${size}px.png`;
+          link.href = URL.createObjectURL(blob);
+          link.click();
+          URL.revokeObjectURL(link.href);
+        }, 'image/png');
+      };
+
+      img.src = url;
+    }
+
+    function downloadAll() {
+      const size = parseInt(document.getElementById('size').value);
+      let downloaded = 0;
+
+      icons.forEach((icon, index) => {
+        setTimeout(() => {
+          downloadIcon(icon);
+          downloaded++;
+          if (downloaded === icons.length) {
+            alert(`✅ 已下载 ${icons.length} 个图标！(尺寸: ${size}x${size}px)`);
+          }
+        }, index * 500); // 每个图标间隔500ms，避免浏览器阻止多次下载
+      });
+    }
+
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

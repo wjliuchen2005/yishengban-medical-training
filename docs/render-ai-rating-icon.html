@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>评分智能体图标渲染器 - 高清PNG导出</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #2c7be5 0%, #1c5fb5 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: white;
+      text-align: center;
+      font-size: 32px;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .subtitle {
+      color: rgba(255,255,255,0.9);
+      text-align: center;
+      font-size: 16px;
+      margin-bottom: 40px;
+    }
+
+    .controls {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .controls h3 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .size-control {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    .size-control label {
+      font-weight: 500;
+      min-width: 100px;
+    }
+
+    .size-control input {
+      flex: 1;
+      max-width: 400px;
+    }
+
+    .size-control span {
+      min-width: 80px;
+      color: #666;
+      font-family: 'Courier New', monospace;
+    }
+
+    .preset-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .preset-btn {
+      padding: 8px 16px;
+      background: #f0f0f0;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background: #e0e0e0;
+      border-color: #2c7be5;
+    }
+
+    .preset-btn.active {
+      background: #2c7be5;
+      color: white;
+      border-color: #2c7be5;
+    }
+
+    .icon-card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .icon-preview {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto 30px;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .icon-preview::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(45deg, #f0f0f0 25%, transparent 25%),
+        linear-gradient(-45deg, #f0f0f0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #f0f0f0 75%),
+        linear-gradient(-45deg, transparent 75%, #f0f0f0 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      opacity: 0.3;
+      z-index: 0;
+    }
+
+    .icon-container {
+      position: relative;
+      z-index: 1;
+      width: 80%;
+      height: 80%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e8f2fc;
+      border-radius: 20px;
+    }
+
+    .icon-svg {
+      width: 45%;
+      height: 45%;
+    }
+
+    .icon-info {
+      text-align: center;
+    }
+
+    .icon-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #2c7be5;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .icon-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .icon-desc {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 24px;
+    }
+
+    .download-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #2c7be5 0%, #1c5fb5 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(44, 123, 229, 0.4);
+    }
+
+    .download-btn:active {
+      transform: translateY(0);
+    }
+
+    canvas {
+      display: none;
+    }
+
+    .info-box {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 30px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .info-box h3 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .info-box ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .info-box li {
+      padding: 8px 0;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-box li::before {
+      content: '✓';
+      color: #2c7be5;
+      font-weight: bold;
+    }
+
+    .usage-section {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .usage-section h3 {
+      color: #333;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .code-block {
+      background: #f7f9fc;
+      border: 1px solid #e1e8ed;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #1a1a1a;
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+
+    .code-block .comment {
+      color: #6a737d;
+    }
+
+    .code-block .tag {
+      color: #22863a;
+    }
+
+    .code-block .attr {
+      color: #005cc5;
+    }
+
+    .code-block .string {
+      color: #032f62;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 评分智能体图标渲染器</h1>
+    <p class="subtitle">ChatDotRound - 综合评语部分图标 · 高清透明PNG导出</p>
+
+    <div class="controls">
+      <h3>导出设置</h3>
+      <div class="size-control">
+        <label for="size">图标尺寸:</label>
+        <input type="range" id="size" min="256" max="4096" value="1024" step="256">
+        <span id="sizeValue">1024px</span>
+      </div>
+      <div class="preset-buttons">
+        <button class="preset-btn" data-size="512">512px</button>
+        <button class="preset-btn active" data-size="1024">1024px (推荐)</button>
+        <button class="preset-btn" data-size="2048">2048px</button>
+        <button class="preset-btn" data-size="4096">4096px (超高清)</button>
+      </div>
+    </div>
+
+    <div class="icon-card">
+      <div class="icon-preview">
+        <div class="icon-container" id="iconContainer">
+          <svg id="iconSvg" class="icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+            <path fill="#2c7be5" d="m174.72 855.68 135.296-45.12 23.68 11.84C388.096 849.536 448.576 864 512 864c211.84 0 384-166.784 384-352S723.84 160 512 160 128 326.784 128 512c0 69.12 24.96 139.264 70.848 199.232l22.08 28.8-46.272 115.584zm-45.248 82.56A32 32 0 0 1 89.6 896l58.368-145.92C94.72 680.32 64 596.864 64 512 64 299.904 256 96 512 96s448 203.904 448 416-192 416-448 416a461.06 461.06 0 0 1-206.912-48.384l-175.616 58.56z" />
+            <path fill="#2c7be5" d="M512 563.2a51.2 51.2 0 1 1 0-102.4 51.2 51.2 0 0 1 0 102.4m192 0a51.2 51.2 0 1 1 0-102.4 51.2 51.2 0 0 1 0 102.4m-384 0a51.2 51.2 0 1 1 0-102.4 51.2 51.2 0 0 1 0 102.4" />
+          </svg>
+        </div>
+      </div>
+
+      <div class="icon-info">
+        <div class="icon-label">AI RATING AGENT</div>
+        <div class="icon-title">评分智能体</div>
+        <div class="icon-desc">综合评语</div>
+        <button class="download-btn" onclick="downloadIcon()">⬇️ 下载PNG图标</button>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <h3>📋 图标信息</h3>
+      <ul>
+        <li>图标名称: ChatDotRound (对话气泡)</li>
+        <li>来源: Element Plus Icons (@element-plus/icons-vue v2.3.2)</li>
+        <li>用途: ResultView.vue - 评分智能体综合评语标题图标</li>
+        <li>颜色: #2c7be5 (蓝色)</li>
+        <li>背景: #e8f2fc (浅蓝色)</li>
+        <li>格式: 透明背景PNG (Alpha通道)</li>
+        <li>默认尺寸: 1024x1024px (可调节)</li>
+      </ul>
+    </div>
+
+    <div class="usage-section">
+      <h3>💻 代码中的使用</h3>
+      <div class="code-block">
+<span class="comment">&lt;!-- ResultView.vue 中的使用 --&gt;</span>
+<span class="tag">&lt;article</span> <span class="attr">class</span>=<span class="string">"section feedback-main"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;div</span> <span class="attr">class</span>=<span class="string">"section-title"</span><span class="tag">&gt;</span>
+    <span class="tag">&lt;span</span> <span class="attr">class</span>=<span class="string">"title-icon blue"</span><span class="tag">&gt;</span>
+      <span class="tag">&lt;el-icon&gt;&lt;ChatDotRound</span> <span class="tag">/&gt;&lt;/el-icon&gt;</span>
+    <span class="tag">&lt;/span&gt;</span>
+    <span class="tag">&lt;div&gt;</span>
+      <span class="tag">&lt;span&gt;</span>评分智能体<span class="tag">&lt;/span&gt;</span>
+      <span class="tag">&lt;h2&gt;</span>综合评语<span class="tag">&lt;/h2&gt;</span>
+    <span class="tag">&lt;/div&gt;</span>
+  <span class="tag">&lt;/div&gt;</span>
+  <span class="tag">&lt;p</span> <span class="attr">class</span>=<span class="string">"summary"</span><span class="tag">&gt;</span>
+    {{ result.summary || '完成更多对话后，评分智能体会生成针对性的综合评语。' }}
+  <span class="tag">&lt;/p&gt;</span>
+<span class="tag">&lt;/article&gt;</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const iconData = {
+      name: 'chat-dot-round',
+      label: 'AI RATING AGENT',
+      title: '评分智能体',
+      subtitle: '综合评语',
+      color: '#2c7be5',
+      bg: '#e8f2fc',
+      paths: [
+        'm174.72 855.68 135.296-45.12 23.68 11.84C388.096 849.536 448.576 864 512 864c211.84 0 384-166.784 384-352S723.84 160 512 160 128 326.784 128 512c0 69.12 24.96 139.264 70.848 199.232l22.08 28.8-46.272 115.584zm-45.248 82.56A32 32 0 0 1 89.6 896l58.368-145.92C94.72 680.32 64 596.864 64 512 64 299.904 256 96 512 96s448 203.904 448 416-192 416-448 416a461.06 461.06 0 0 1-206.912-48.384l-175.616 58.56z',
+        'M512 563.2a51.2 51.2 0 1 1 0-102.4 51.2 51.2 0 0 1 0 102.4m192 0a51.2 51.2 0 1 1 0-102.4 51.2 51.2 0 0 1 0 102.4m-384 0a51.2 51.2 0 1 1 0-102.4 51.2 51.2 0 0 1 0 102.4'
+      ]
+    };
+
+    // 初始化
+    function init() {
+      const sizeSlider = document.getElementById('size');
+      const sizeValue = document.getElementById('sizeValue');
+
+      sizeSlider.addEventListener('input', (e) => {
+        sizeValue.textContent = e.target.value + 'px';
+        updatePresetButtons(e.target.value);
+      });
+
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const size = e.target.dataset.size;
+          sizeSlider.value = size;
+          sizeValue.textContent = size + 'px';
+          updatePresetButtons(size);
+        });
+      });
+    }
+
+    function updatePresetButtons(size) {
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.size == size);
+      });
+    }
+
+    function downloadIcon() {
+      const size = parseInt(document.getElementById('size').value);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.width = size;
+      canvas.height = size;
+
+      // 创建SVG
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      svg.setAttribute('width', size);
+      svg.setAttribute('height', size);
+      svg.setAttribute('viewBox', '0 0 1024 1024');
+
+      // 添加圆角矩形背景
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('width', size);
+      rect.setAttribute('height', size);
+      rect.setAttribute('rx', size * 0.15);
+      rect.setAttribute('fill', iconData.bg);
+      svg.appendChild(rect);
+
+      // 添加图标路径（居中，占40%大小）
+      const iconGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const scale = 0.4;
+      const offset = (1024 * (1 - scale)) / 2;
+      iconGroup.setAttribute('transform', `translate(${offset}, ${offset}) scale(${scale})`);
+
+      iconData.paths.forEach(pathData => {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('fill', iconData.color);
+        path.setAttribute('d', pathData);
+        iconGroup.appendChild(path);
+      });
+      svg.appendChild(iconGroup);
+
+      // 转换为图片
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const img = new Image();
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+
+        canvas.toBlob(function(blob) {
+          const link = document.createElement('a');
+          link.download = `ai-rating-agent-${size}px.png`;
+          link.href = URL.createObjectURL(blob);
+          link.click();
+          URL.revokeObjectURL(link.href);
+        }, 'image/png');
+      };
+
+      img.src = url;
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

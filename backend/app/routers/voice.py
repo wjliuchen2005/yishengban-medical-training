@@ -23,6 +23,7 @@ from app.routers.auth import get_current_user
 from app.usage import ensure_quota, reserve_voice_cost
 from app.ai.prompts import get_scene_type
 from app.voice import ASSESSMENT_PROMPT, PSYCH_ASSESSMENT_PROMPT, VoiceAssessment, sign_assessment
+from app.mimo_keys import get_next_mimo_key
 
 def private_response(response: Response):
     response.headers['Cache-Control'] = 'private, no-store'
@@ -90,9 +91,8 @@ def guard(user_id: int, seconds: float) -> None:
 
 
 def config(assessment=False):
-    key = os.getenv('MIMO_API_KEY', '')
-    if not key:
-        raise HTTPException(503, '尚未配置MiMo语音输入')
+    """获取 MiMo 配置，使用轮询的 API key"""
+    key = get_next_mimo_key()
     return os.getenv('MIMO_ASR_BASE_URL', 'https://api.xiaomimimo.com/v1').rstrip('/'), key
 
 

@@ -5,6 +5,7 @@
 
 配置方式（backend/.env）：
 - LLM_API_KEY / DEEPSEEK_API_KEY  API 密钥（智谱密钥形如 id.secret）
+- LLM_API_KEYS  多个密钥（逗号分隔），用于负载均衡，例如：key1,key2,key3
 - LLM_BASE_URL   智谱 https://open.bigmodel.cn/api/paas/v4 / DeepSeek https://api.deepseek.com
 - LLM_MODEL      智谱 glm-5.3-flash / DeepSeek deepseek-v4-pro
 - LLM_REASONING_EFFORT  评分等复杂任务是否开深度思考，默认 high
@@ -12,30 +13,64 @@
 """
 import os
 import json
+import threading
 from openai import OpenAI
 from dotenv import load_dotenv
 from app.voice import VOICE_GUIDANCE
 
 load_dotenv()
 
-API_KEY = os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
 BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
 MODEL = os.getenv("LLM_MODEL", "deepseek-v4-pro")
 PROVIDER = "zhipu" if "bigmodel.cn" in BASE_URL else "deepseek"
 REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "high")
 CHAT_REASONING_EFFORT = os.getenv("LLM_CHAT_REASONING_EFFORT", "low")
 
-# 惰性创建：避免 import 时就发起网络请求
-_client = None
+# 多 key 负载均衡支持
+_api_keys = []
+_current_key_index = 0
+_key_lock = threading.Lock()
+
+# 初始化 API keys
+_keys_env = os.getenv("LLM_API_KEYS", "")
+if _keys_env:
+    _api_keys = [k.strip() for k in _keys_env.split(",") if k.strip()]
+else:
+    # 回退到单个 key
+    single_key = os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
+    if single_key:
+        _api_keys = [single_key]
+
+if not _api_keys:
+    print("⚠️  警告: 未配置 LLM_API_KEY 或 LLM_API_KEYS")
+
+print(f"✓ LLM 配置: {len(_api_keys)} 个 API key, 模型: {MODEL}, 提供商: {PROVIDER}")
+
+# 客户端池（每个 key 一个客户端）
+_clients = {}
+_clients_lock = threading.Lock()
+
+
+def _get_next_key() -> str:
+    """轮询获取下一个 API key"""
+    global _current_key_index
+    if not _api_keys:
+        raise RuntimeError("未配置 LLM_API_KEY，请检查 backend/.env")
+
+    with _key_lock:
+        key = _api_keys[_current_key_index]
+        _current_key_index = (_current_key_index + 1) % len(_api_keys)
+        return key
 
 
 def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        if not API_KEY:
-            raise RuntimeError("未配置 LLM_API_KEY，请检查 backend/.env")
-        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
-    return _client
+    """获取下一个可用的客户端（轮询方式）"""
+    api_key = _get_next_key()
+
+    with _clients_lock:
+        if api_key not in _clients:
+            _clients[api_key] = OpenAI(api_key=api_key, base_url=BASE_URL)
+        return _clients[api_key]
 
 
 def _thinking_kwargs(reasoning_effort: str | None) -> dict:

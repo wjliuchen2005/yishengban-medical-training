@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from app.models import User
 from app.routers.auth import get_current_user
+from app.mimo_keys import get_next_mimo_key
 
 router = APIRouter(prefix="/api/tts", tags=["语音合成"])
 load_dotenv()
@@ -63,21 +64,14 @@ class TTSRequest(BaseModel):
 
 
 def _get_client() -> OpenAI:
-    global _client
-    if _client is not None:
-        return _client
-    with _client_lock:
-        if _client is None:
-            api_key = os.getenv("MIMO_API_KEY", "").strip()
-            if not api_key:
-                raise RuntimeError("MIMO_API_KEY is not configured")
-            _client = OpenAI(
-                api_key=api_key,
-                base_url=os.getenv("MIMO_TTS_BASE_URL", "https://api.xiaomimimo.com/v1"),
-                timeout=float(os.getenv("MIMO_TTS_TIMEOUT_SECONDS", "30")),
-                max_retries=1,
-            )
-    return _client
+    """每次请求创建新 client，使用轮询的 API key"""
+    api_key = get_next_mimo_key()
+    return OpenAI(
+        api_key=api_key,
+        base_url=os.getenv("MIMO_TTS_BASE_URL", "https://api.xiaomimimo.com/v1"),
+        timeout=float(os.getenv("MIMO_TTS_TIMEOUT_SECONDS", "30")),
+        max_retries=1,
+    )
 
 
 def _voice_for(role: str, gender: str, requested_voice: str | None = None) -> str:
