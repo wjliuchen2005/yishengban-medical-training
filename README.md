@@ -1,32 +1,46 @@
 # 易生伴 - 高校健康教育情境训练平台
+# Yishengban - University Health Education Scenario Training Platform
 
 <div align="center">
 
 ![易生伴Logo](docs/assets/logo.svg)
 
-**基于五智能体协作的沉浸式医疗急救对话训练系统**
+**基于五智能体协作的沉浸式医疗急救对话训练系统**  
+**Immersive Medical Training System Based on Five-Agent Collaboration**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4-green.svg)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal.svg)](https://fastapi.tiangolo.com/)
 
-[在线体验](http://43.155.14.215/yishengban/) | [项目文档](./docs/) | [部署指南](#部署指南) | [开发文档](#开发文档)
+[在线体验 Demo](http://43.155.14.215/yishengban/) | [English Version](#english-version) | [部署指南 Deployment](#-生产部署)
 
 </div>
 
 ---
 
+## 🏷️ 关键词 Keywords
+
+**中文**：医学教育 | 医学科普 | 虚拟仿真实验 | 急救培训 | 多智能体系统 | 情境训练 | OSCE | 数字人交互
+
+**English**: Medical Education | Medical Science Popularization | Virtual Simulation Experiment | First Aid Training | Multi-Agent System | Scenario-Based Training | OSCE | Digital Human Interaction
+
+---
+
 ## 📖 项目简介
 
-**易生伴**（Yishengban）是一款面向高校学生的开源Web端情境化健康实训平台。针对医学科普缺乏临场感、大学生就医流程生疏、青年学生日常心理压力大且缺乏低门槛倾诉渠道、医学生临床实操试错成本高等现实痛点，平台借助拟真数字人的动作与语音交互，为学生打造了一个**低风险、可反复试错的沉浸式实训空间**。
+**易生伴**（Yishengban）是一款面向高校学生的开源Web端情境化健康实训平台。针对医学科普缺乏临场感、大学生就医流程生疏、青年学生日常心理压力大且缺乏低门槛倾诉渠道、医学生临床实操试错成本高等现实痛点，平台借助拟真数字人的动作与语音交互，为学生打造了一个**低风险、可反复试错的沉浸式虚拟仿真实训空间**。
 
 ### 🎯 核心价值
 
 - 🏥 **医学生**：零风险临床实训，OSCE标准化问诊训练
 - 🎓 **普通学生**：学会独立看病，掌握急救技能，了解医保流程
 - 💚 **心理健康**：低门槛倾诉渠道，隐私加密保护
-- 🏫 **教育机构**：完整的教学工具，可追溯的训练数据
+- 🏫 **教育机构**：完整的虚拟仿真教学工具，可追溯的训练数据
+
+### 🤖 开发工具
+
+本项目使用 **Claude Code** 和 **Codex** 辅助生成部分代码和文档。
 
 ---
 
@@ -483,63 +497,40 @@ npm run preview
 
 ---
 
-## 📈 性能指标
+## 📈 性能指标 Performance Metrics
 
-| 指标 | 数据 |
+| 指标 Metric | 数据 Data |
 |------|------|
-| **后端API响应** | <500ms（对话场景） |
-| **前端首屏加载** | <2s（Vite优化） |
-| **数据库查询** | <50ms（索引优化） |
-| **并发支持** | 15-20用户（2核2GB配置） |
-| **QPS（3个key）** | 4.69（20并发测试） |
-| **平均AI响应** | 0.21-0.48秒 |
+| **后端API响应 Backend API Response** | <500ms（对话场景 Dialogue） |
+| **前端首屏加载 Frontend Initial Load** | <2s（Vite优化 Vite Optimized） |
+| **数据库查询 Database Query** | <50ms（索引优化 Index Optimized） |
+| **并发支持 Concurrent Users** | 15-20用户（2核2GB配置 2-core 2GB） |
+| **QPS（3个key）** | 4.69（20并发测试 20 Concurrent） |
+| **平均AI响应 Average AI Response** | 0.21-0.48秒 seconds |
 
 ---
 
-## 🔒 安全与隐私
+## 🔒 安全与隐私 Security & Privacy
 
-### 已实施的安全措施
+### 已实施的安全措施 Security Measures
 
-- 🔐 **JWT认证** + bcrypt密码哈希
-- 🔒 **心理对话端到端加密**（Fernet对称加密）
-- 🛡️ **Nginx速率限制**（API 10次/秒，登录 5次/分钟）
-- 🔥 **UFW防火墙**（仅开放22/80/443）
-- 🚫 **CORS严格域名白名单**
-- 🔑 **敏感密钥环境变量隔离**（`.env`不提交版本控制）
-- 💾 **每日自动备份**（数据库+源码，凌晨3点）
-- 📝 **访问日志与错误日志**
+- 🔐 **JWT认证 JWT Authentication** + bcrypt密码哈希 Password Hashing
+- 🔒 **心理对话端到端加密 E2E Encryption**（Fernet对称加密 Symmetric Encryption）
+- 🛡️ **Nginx速率限制 Rate Limiting**（API 10次/秒，登录 5次/分钟）
+- 🔥 **UFW防火墙 Firewall**（仅开放22/80/443 Only ports 22/80/443）
+- 🚫 **CORS严格域名白名单 CORS Whitelist**
+- 🔑 **敏感密钥环境变量隔离 Secret Key Isolation**（`.env`不提交版本控制）
+- 💾 **每日自动备份 Daily Backup**（数据库+源码，凌晨3点）
+- 📝 **访问日志与错误日志 Access & Error Logs**
 
-### 隐私保护特性
+### 隐私保护特性 Privacy Features
 
-- 心理对话加密存储，数据库不存明文
-- 用户可自主删除训练记录
-- 后端只监听本地127.0.0.1，公网不可直达
-- 语音表达观察数据仅辅助反馈，不长期存储
+- 心理对话加密存储，数据库不存明文 Psychological dialogue encrypted storage
+- 用户可自主删除训练记录 User-controlled data deletion
+- 后端只监听本地127.0.0.1，公网不可直达 Backend only listens on localhost
+- 语音表达观察数据仅辅助反馈，不长期存储 Voice feedback data not permanently stored
 
 ---
-
-## 🤝 贡献指南
-
-欢迎任何形式的贡献！包括但不限于：
-
-- 🐛 报告Bug
-- 💡 提出新功能建议
-- 📝 改进文档
-- 🔧 提交代码修复或新功能
-
-### 贡献流程
-
-1. Fork本仓库
-2. 创建特性分支（`git checkout -b feature/AmazingFeature`）
-3. 提交更改（`git commit -m 'Add some AmazingFeature'`）
-4. 推送到分支（`git push origin feature/AmazingFeature`）
-5. 开启Pull Request
-
-### 代码规范
-
-- Python：遵循PEP 8
-- JavaScript/Vue：遵循Vue 3官方风格指南
-- 提交信息：使用清晰的中英文描述
 
 ---
 
@@ -557,15 +548,7 @@ npm run preview
 
 ---
 
-## 👥 团队与致谢
-
-### 核心团队
-
-- **项目负责人**：[您的名字]
-- **技术架构**：[您的名字]
-- **AI工程**：[您的名字]
-- **前端开发**：[您的名字]
-- **医学顾问**：[医学专家]
+## 👥 致谢 Acknowledgments
 
 ### 特别致谢
 
@@ -585,61 +568,273 @@ npm run preview
 
 ---
 
-## 📞 联系方式
+## 📞 联系方式 Contact
 
-- **项目主页**：https://github.com/wjliuchen2005/yishengban-medical-training
-- **在线体验**：http://43.155.14.215/yishengban/
-- **问题反馈**：[GitHub Issues](https://github.com/wjliuchen2005/yishengban-medical-training/issues)
-- **邮箱**：[您的邮箱]
-- **微信**：[您的微信号]
+- **项目主页 Repository**：https://github.com/wjliuchen2005/yishengban-medical-training
+- **在线体验 Demo**：http://43.155.14.215/yishengban/
+- **问题反馈 Issues**：[GitHub Issues](https://github.com/wjliuchen2005/yishengban-medical-training/issues)
 
 ---
-
-## 🗺️ 路线图
-
-### 已完成 ✅
-
-- [x] 五智能体协作框架
-- [x] 四大训练场景
-- [x] 数字人交互系统
-- [x] 语音ASR/TTS
-- [x] 移动端适配
-- [x] 心理陪伴加密
-- [x] 生产环境部署
-
-### 进行中 🚧
-
-- [ ] 微信小程序版本
-- [ ] 易班应用广场接入
-- [ ] 更多OSCE病例库
-- [ ] 教师管理后台
-
-### 未来计划 📋
-
-- [ ] 虚拟仿真实验室集成
-- [ ] 多人协作急救训练
-- [ ] VR/AR沉浸式体验
-- [ ] 国际化（英文版）
-- [ ] 更多医学场景（心肺复苏、创伤处理等）
-
----
-
-## 📊 数据统计
 
 <div align="center">
 
-![GitHub stars](https://img.shields.io/github/stars/wjliuchen2005/yishengban-medical-training?style=social)
-![GitHub forks](https://img.shields.io/github/forks/wjliuchen2005/yishengban-medical-training?style=social)
-![GitHub watchers](https://img.shields.io/github/watchers/wjliuchen2005/yishengban-medical-training?style=social)
+**易生伴 - 让医学教育更有温度**  
+**Yishengban - Making Medical Education More Accessible**
+
+[⬆ 回到顶部 Back to Top](#易生伴---高校健康教育情境训练平台)
 
 </div>
 
 ---
 
+# English Version
+
+## 📖 Project Introduction
+
+**Yishengban** is an open-source web-based scenario training platform for university students' health education. Addressing the real-world challenges of lack of immersive medical science popularization, students' unfamiliarity with hospital procedures, insufficient low-barrier psychological support channels, and high trial-and-error costs in clinical practice for medical students, the platform creates a **low-risk, repeatable immersive virtual simulation training space** through realistic digital human interaction with motion and voice.
+
+### 🎯 Core Values
+
+- 🏥 **Medical Students**: Zero-risk clinical training, OSCE standardized patient interviews
+- 🎓 **General Students**: Learn to seek medical care independently, master first aid skills, understand medical insurance
+- 💚 **Mental Health**: Low-barrier emotional support channel with encrypted privacy protection
+- 🏫 **Educational Institutions**: Complete virtual simulation teaching tools with traceable training data
+
+### 🤖 Development Tools
+
+This project uses **Claude Code** and **Codex** to assist in generating parts of the code and documentation.
+
+---
+
+## ✨ Core Features
+
+### 🤖 Five-Agent Real-Time Collaboration Framework
+
+The platform's immersive experience is powered by our self-built **"Scenario Generation → Role Playing → Observer Coach → Stage Judgment → Evaluation Review"** five-agent real-time collaboration framework:
+
+```
+Scenario Generator → Dynamically constructs training scenarios
+       ↓
+Role Player Agent → Acts as patient/doctor/receptionist
+       ↓
+Observer Coach Agent → Real-time supervision and error correction
+       ↓
+Stage Judgment Agent → Tracks training progress
+       ↓
+Evaluation Agent → Multi-dimensional assessment and feedback
+```
+
+### 🎓 Four Training Scenarios
+
+#### 1️⃣ Foreign Body Airway Obstruction First Aid
+
+**Based on ERC 2025 & AHA 2025 Guidelines**
+
+- 🎲 **Dynamic Scenario Generation**: Covers special groups like pregnant women, obese patients
+- ⏱️ **Time Pressure Mechanism**: Realistic simulation of physiological deterioration (60-150 seconds)
+- 🎭 **Digital Human Realistic Feedback**: From severe coughing → hypoxia cyanosis → fainting → resuscitation
+- 🛡️ **Dangerous Operation Interception**: Immediately blocks fatal mistakes like feeding water
+- 📊 **Practical-Level Correction**: Structured guidance on positioning, hand placement, force direction
+
+#### 2️⃣ First Independent Medical Visit
+
+**Replicating Jiangsu Provincial People's Hospital Complete Medical Process**
+
+- 🏥 **Full-Chain Simulation**: Online appointment → Registration → Consultation → Medication → Insurance
+- 📚 **Insurance Knowledge Base**: Intelligent interpretation of Nanjing Medical University insurance policies
+- 🎯 **Intelligent Triage**: WeChat official account intelligent consultation interface
+- 📋 **SAMPLE/OPQRST Principles**: Standardized medical history taking training
+
+#### 3️⃣ OSCE Simulated Consultation
+
+**Standardized Patient Interview Training for Medical Students**
+
+- 📝 **Real-time Medical Record Writing**: Write while asking, real-time modification
+- 🔍 **Intelligent Review**: Consultation logic review + pathological mechanism analysis
+- ✅ **Medical Rationality Verification**: Automatic verification of generated case professionalism
+
+#### 4️⃣ Yixin Psychological Companion
+
+**Low-Barrier, Privacy-Protected Mental Health Support**
+
+- 🔒 **End-to-End Encryption**: User-derived key + Fernet symmetric encryption
+- 🤝 **Gentle Companionship**: Non-judgmental listening, emotional support
+- 🚪 **Stateless Dialogue**: Frontend passes history, backend leaves no trace
+
+---
+
+## 🏗️ Technical Architecture
+
+### Core Technology Stack
+
+```
+Frontend: Vue 3.4 + Composition API + Pinia + Element Plus + GSAP
+Backend: FastAPI + Python 3.10+ + SQLAlchemy 2.0 + MySQL 8.0
+AI Models: Zhipu GLM 5.3 Flash / DeepSeek V4 Pro
+Voice Service: Xiaomi MiMo V2.5 (ASR + TTS + Multimodal Emotion Analysis)
+Deployment: Nginx + Uvicorn + Tencent Cloud Lighthouse Server
+```
+
+### Five-Agent Implementation
+
+All agents are implemented through **precise prompt engineering** (~1,400 lines of professional medical prompts):
+
+| Agent | Implementation | Core Function |
+|--------|---------|---------|
+| **Scenario Generator** | `backend/app/ai/scenario_generator.py` | Case pool + LLM generation + validation + fallback |
+| **Role Player** | `backend/app/ai/prompts.py` | Play patient/doctor/receptionist with medical knowledge |
+| **Observer Coach** | `backend/app/routers/chat.py` + `prompts.py` | Parallel calls, output tip/warning/danger feedback |
+| **Stage Judgment** | `backend/app/ai/prompts.py` | Track training progress, return current stage |
+| **Evaluation** | `backend/app/routers/result.py` | Lazy loading, three-dimensional evaluation system |
+
+---
+
+## 🚀 Quick Start
+
+### Environment Requirements
+
+- Python 3.10+
+- Node.js 18+
+- MySQL 8.0
+- Nginx (production)
+
+### Local Development
+
+#### 1. Clone Repository
+
+```bash
+git clone https://github.com/wjliuchen2005/yishengban-medical-training.git
+cd yishengban-medical-training
+```
+
+#### 2. Backend Setup
+
+```bash
+cd backend
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment variables
+cp .env.example .env
+# Edit .env and fill in necessary API keys
+```
+
+**Required Configuration** (`backend/.env`):
+
+```bash
+# Database
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=yishengban
+
+# LLM API (multiple keys separated by commas)
+LLM_API_KEYS=your_glm_key1,your_glm_key2,your_glm_key3
+LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
+LLM_MODEL=glm-5.3-flash
+
+# Xiaomi MiMo Voice Service
+MIMO_API_KEY=your_mimo_key
+
+# JWT Secret (randomly generated)
+JWT_SECRET=your_secret_key_here
+
+# CORS allowed origins
+CORS_ORIGINS=http://localhost:5173,http://43.155.14.215
+```
+
+#### 3. Initialize Database
+
+```bash
+# Login to MySQL
+mysql -u root -p
+
+# Execute initialization script
+source database/init.sql
+
+# Execute migration scripts
+source database/migrations/20260904_add_osce_scene.sql
+source database/migrations/20260905_add_psych_history.sql
+source database/migrations/20260905_add_daily_usage.sql
+source database/migrations/20260905_add_history_features.sql
+```
+
+#### 4. Start Backend
+
+```bash
+cd backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Backend API Documentation: http://localhost:8000/docs
+
+#### 5. Frontend Setup
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+Frontend Access: http://localhost:5173
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](./LICENSE).
+
+You are free to:
+- ✅ Use commercially
+- ✅ Modify
+- ✅ Distribute
+- ✅ Use privately
+
+Only requirement: Retain original author copyright notice.
+
+---
+
+## 👥 Acknowledgments
+
+### Special Thanks
+
+- **Nanjing Medical University**: Medical insurance knowledge base and testing support
+- **Jiangsu Provincial People's Hospital**: Medical process reference
+- **Zhipu AI**: GLM 5.3 Flash model support
+- **Xiaomi MiMo Team**: Voice multimodal technology support
+- **Test Volunteers**: 200+ testing validations
+
+### Referenced Medical Guidelines
+
+- ERC 2025 European Resuscitation Council Guidelines
+- AHA 2025 American Heart Association Guidelines
+- OSCE Standardized Patient Interview Standards
+- SAMPLE Medical History Taking Principles
+- OPQRST Pain Assessment Principles
+
+---
+
+## 📞 Contact
+
+- **Repository**: https://github.com/wjliuchen2005/yishengban-medical-training
+- **Demo**: http://43.155.14.215/yishengban/
+- **Issues**: [GitHub Issues](https://github.com/wjliuchen2005/yishengban-medical-training/issues)
+
+---
+
 <div align="center">
 
-**易生伴 - 让医学教育更有温度**
+**Yishengban - Making Medical Education More Accessible**
 
-[⬆ 回到顶部](#易生伴---高校健康教育情境训练平台)
+[⬆ Back to Top](#易生伴---高校健康教育情境训练平台)
 
 </div>
