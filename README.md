@@ -1,5 +1,5 @@
-# 易生伴 - 高校健康教育情境训练平台
-# Yishengban - University Health Education Scenario Training Platform
+# 易生伴 - 五智能体医疗训练系统
+# Yishengban - Immersive Medical Training System Based on Five-Agent Collaboration
 
 <div align="center">
 
